@@ -16,6 +16,9 @@
 #   (lihat TEST-REPORT.md di folder induk): h264, crf 16, concurrency 1,
 #   timeout 300 detik (cold start SwiftShader butuh waktu lama).
 # - Tidak ada secret yang dipakai workflow ini.
+# - Runner ubuntu-latest TIDAK menyertakan ffmpeg/ffprobe — job stitch
+#   WAJIB apt-get install ffmpeg dulu (penyebab gagal run #1: step
+#   "Gabung part" mati di "ffprobe: command not found" sebelum concat).
 
 name: Render BridgeShort (10 paralel)
 
@@ -84,6 +87,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
       - name: Download ke-10 part
         uses: actions/download-artifact@v4
         with:
@@ -91,6 +97,11 @@ jobs:
 
       - name: Gabung part 0..9 (stream copy, fallback re-encode)
         run: |
+          # ffmpeg/ffprobe TIDAK preinstalled di runner ubuntu-latest;
+          # kalau install di atas gagal, gagal di sini dgn pesan jelas
+          # (bukan "RUSAK: part-N").
+          command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null \
+            || { echo "ffmpeg/ffprobe tidak ditemukan"; exit 1; }
           # Cek semua part ada + punya stream video sebelum digabung.
           for i in 0 1 2 3 4 5 6 7 8 9; do
             test -f "parts/part-$i/part-$i.mp4" || { echo "HILANG: part-$i"; exit 1; }
