@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { NOINK } from "../bridge/ink";
 
 export const SU = 1;
-type ActorName = "Dani"|"Bolang"|"Jali"|"Nenek Sari"|"Pak Karto"|"Warga";
+export type ActorName = "Dani"|"Bolang"|"Jali"|"Nenek Sari"|"Pak Karto"|"Warga"|"Warga2"|"Warga3"|"Warga4";
 /** Ekspresi wajah (v3, 27 Nov 2026): v2 semua tokoh senyum terus — user
  *  bilang "gambar orang ngaco". Tiap tokoh kini punya varian wajah yang
  *  dipakai sesuai adegan (Dani kaget, Nenek khawatir, Karto serius,
@@ -17,6 +17,12 @@ const defs:SpriteDef[]=[
  {name:"Nenek Sari",w:0.72,h:1.42,shirt:"#8d5b76",head:"#c99578",hair:"#eee6d7",kind:"scarf"},
  {name:"Pak Karto",w:0.76,h:1.68,shirt:"#806b4c",head:"#c28b69",hair:"#eee2cf",kind:"peci"},
  {name:"Warga",w:0.58,h:1.55,shirt:"#647b8a",head:"#c88f6c",hair:"#30251f",kind:"plain"},
+ // v3-fix (27 Nov 2026, user: "bentuknya sama semua"): 4 warga latar
+ // JANGAN klon identik — tiap varian beda tinggi/lebar, warna baju,
+ // kulit, rambut/tutup kepala. Dipakai bergantian di world.ts (shot 6/8/12/13).
+ {name:"Warga2",w:0.66,h:1.68,shirt:"#7a4a3a",head:"#b87958",hair:"#1f1a16",kind:"cap"},
+ {name:"Warga3",w:0.54,h:1.45,shirt:"#4a6b52",head:"#d9a06f",hair:"#3a2a1a",kind:"headband"},
+ {name:"Warga4",w:0.70,h:1.60,shirt:"#8a7a3a",head:"#a87a5e",hair:"#6a6a6a",kind:"plain"},
 ];
 const makeSprite=(d:SpriteDef,expr:Expr="smile")=>{
  const c=document.createElement("canvas");c.width=256;c.height=512;
@@ -29,33 +35,51 @@ const makeSprite=(d:SpriteDef,expr:Expr="smile")=>{
  // arms and sleeves
  path(()=>{g.moveTo(65,195);g.lineTo(34,225);g.lineTo(24,330);g.lineTo(52,337);g.lineTo(89,250);g.closePath();},d.shirt);
  path(()=>{g.moveTo(190,195);g.lineTo(221,225);g.lineTo(231,330);g.lineTo(203,337);g.lineTo(166,250);g.closePath();},d.shirt);
- path(()=>{g.ellipse(128,115,d.kind==="round"?58:48,62,0,0,Math.PI*2);},d.head);
- // hair/headwear makes each profile distinct
+ path(()=>{g.ellipse(128,118,d.kind==="round"?56:46,58,0,0,Math.PI*2);},d.head);
+ // hair/headwear makes each profile distinct (v3-fix: hairline is a curve,
+ // not a straight bar across the forehead — the straight edge read as a mask)
+ const plainHair=()=>{path(()=>{g.moveTo(80,82);g.quadraticCurveTo(76,30,128,32);g.quadraticCurveTo(180,30,177,82);g.quadraticCurveTo(152,94,128,92);g.quadraticCurveTo(104,94,80,82);g.closePath();},d.hair);};
  if(d.kind==="peci"){path(()=>{g.moveTo(75,72);g.lineTo(78,43);g.quadraticCurveTo(128,20,178,43);g.lineTo(181,75);g.closePath();},"#28242a");}
  else if(d.kind==="scarf"){path(()=>{g.moveTo(62,93);g.quadraticCurveTo(60,28,128,28);g.quadraticCurveTo(196,28,194,93);g.lineTo(173,75);g.quadraticCurveTo(128,53,82,82);g.closePath();},"#eee7db");path(()=>{g.moveTo(64,154);g.lineTo(37,240);g.lineTo(83,265);g.lineTo(111,165);g.closePath();},"#a77c91");}
- else {path(()=>{g.moveTo(79,77);g.quadraticCurveTo(78,34,128,38);g.quadraticCurveTo(181,30,181,83);g.lineTo(165,65);g.lineTo(93,67);g.closePath();},d.hair);}
- // face details — ekspresi per adegan (v3). Mata di (108,116)/(148,116),
- // mulut di sekitar (128,145-152). Ukuran sengaja besar supaya kebaca
- // dari jarak shot lebar (7-16 m).
+ else if(d.kind==="cap"){path(()=>{g.moveTo(78,84);g.quadraticCurveTo(76,34,128,34);g.quadraticCurveTo(180,34,178,84);g.quadraticCurveTo(150,96,128,94);g.quadraticCurveTo(106,96,78,84);g.closePath();},"#33502f");g.fillStyle="#2a4026";g.fillRect(70,76,116,11);}
+ else if(d.kind==="headband"){plainHair();g.fillStyle="#c94f3d";g.fillRect(80,72,96,13);}
+ else {plainHair();}
+ // face details — ekspresi per adegan (v3). v3-fix (27 Nov 2026, user:
+ // "bentuk orangnya jelek"): mata v3 terlalu renggang (40 px di kepala
+ // 96 px) + tanpa hidung + tanpa alis = muka kelihatan seperti topeng.
+ // Kini: mata di (112,118)/(144,118) (32 px), hidung garis kecil di
+ // tengah, alis untuk semua ekspresi, mulut "o" kaget lebih kecil.
+ // Kepala sedikit lebih kecil (rx 46, ry 58) supaya proporsi wajar.
+ const nose=()=>{g.strokeStyle="#8a5f52";g.lineWidth=3;g.beginPath();g.moveTo(128,124);g.lineTo(126,134);g.lineTo(131,134);g.stroke();};
  if(expr==="shock"){ // mata melotot + mulut "o" terbuka (Dani kaget)
-  g.fillStyle="#fff";g.beginPath();g.arc(108,114,9,0,Math.PI*2);g.arc(148,114,9,0,Math.PI*2);g.fill();
-  g.fillStyle="#252329";g.beginPath();g.arc(108,114,4.5,0,Math.PI*2);g.arc(148,114,4.5,0,Math.PI*2);g.fill();
-  g.fillStyle="#7a2e2e";g.beginPath();g.ellipse(128,152,9,12,0,0,Math.PI*2);g.fill();
+  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(102,100);g.lineTo(120,96);g.moveTo(136,96);g.lineTo(154,100);g.stroke();
+  g.fillStyle="#fff";g.beginPath();g.arc(112,118,8,0,Math.PI*2);g.arc(144,118,8,0,Math.PI*2);g.fill();
+  g.fillStyle="#252329";g.beginPath();g.arc(112,118,4,0,Math.PI*2);g.arc(144,118,4,0,Math.PI*2);g.fill();
+  nose();
+  g.fillStyle="#7a2e2e";g.beginPath();g.ellipse(128,152,7,9,0,0,Math.PI*2);g.fill();
  } else if(expr==="worry"){ // alis naik ke tengah + mulut cemberut (Nenek khawatir)
-  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(96,100);g.lineTo(116,94);g.moveTo(140,94);g.lineTo(160,100);g.stroke();
-  g.fillStyle="#252329";g.beginPath();g.arc(108,116,5,0,Math.PI*2);g.arc(148,116,5,0,Math.PI*2);g.fill();
+  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(100,102);g.lineTo(118,96);g.moveTo(138,96);g.lineTo(156,102);g.stroke();
+  g.fillStyle="#252329";g.beginPath();g.arc(112,118,5,0,Math.PI*2);g.arc(144,118,5,0,Math.PI*2);g.fill();
+  nose();
   g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,160,10,Math.PI+0.25,Math.PI*2-0.25);g.stroke();
  } else if(expr==="serious"){ // mata garis datar + mulut lurus (Pak Karto tegas)
-  g.strokeStyle="#252329";g.lineWidth=6;g.beginPath();g.moveTo(96,114);g.lineTo(120,114);g.moveTo(136,114);g.lineTo(160,114);g.stroke();
-  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.moveTo(112,150);g.lineTo(144,150);g.stroke();
+  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(102,106);g.lineTo(122,106);g.moveTo(134,106);g.lineTo(154,106);g.stroke();
+  g.strokeStyle="#252329";g.lineWidth=6;g.beginPath();g.moveTo(100,118);g.lineTo(124,118);g.moveTo(132,118);g.lineTo(156,118);g.stroke();
+  nose();
+  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.moveTo(114,152);g.lineTo(142,152);g.stroke();
  } else if(expr==="puzzled"){ // satu alis naik + mulut "o" kecil (Jali heran)
-  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(136,100);g.lineTo(158,94);g.stroke();
-  g.fillStyle="#252329";g.beginPath();g.arc(108,116,5,0,Math.PI*2);g.arc(148,116,5,0,Math.PI*2);g.fill();
-  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,150,6,0,Math.PI*2);g.stroke();
- } else { // smile (default): mata titik + senyum
-  g.fillStyle="#252329";g.beginPath();g.arc(108,116,5,0,Math.PI*2);g.arc(148,116,5,0,Math.PI*2);g.fill();
-  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,145,13,0.15,Math.PI-0.15);g.stroke();
+  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(138,102);g.lineTo(158,96);g.stroke();
+  g.fillStyle="#252329";g.beginPath();g.arc(112,118,5,0,Math.PI*2);g.arc(144,118,5,0,Math.PI*2);g.fill();
+  nose();
+  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,150,5,0,Math.PI*2);g.stroke();
+ } else { // smile (default): mata titik + alis + senyum
+  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(102,106);g.lineTo(120,103);g.moveTo(136,103);g.lineTo(154,106);g.stroke();
+  g.fillStyle="#252329";g.beginPath();g.arc(112,118,5,0,Math.PI*2);g.arc(144,118,5,0,Math.PI*2);g.fill();
+  nose();
+  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,148,12,0.15,Math.PI-0.15);g.stroke();
  }
+ // kumis Pak Karto (di bawah hidung, di atas mulut) — ciri khasnya
+ if(d.name==="Pak Karto"){g.fillStyle="#28242a";g.beginPath();g.ellipse(128,141,13,4.5,0,0,Math.PI*2);g.fill();}
  if(d.kind==="peci"){g.strokeStyle="#eee2cf";g.lineWidth=5;g.beginPath();g.moveTo(104,158);g.quadraticCurveTo(128,180,153,158);g.stroke();}
  if(d.kind==="round"){g.fillStyle="#eee2cf";g.fillRect(70,190,116,22);}
  if(d.kind==="bucket"){g.strokeStyle="#b6a27c";g.lineWidth=9;g.beginPath();g.arc(214,335,35,Math.PI,Math.PI*2);g.stroke();g.fillStyle="#9ca6a2";g.fillRect(190,335,48,55);}
