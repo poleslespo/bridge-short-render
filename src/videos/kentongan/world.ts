@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Cast } from "./cast";
+import { Cast, type Expr } from "./cast";
 import { SHOTS, camAt, smooth, bolangXAt } from "./story";
 
 export type Kit = Record<string, never>;
@@ -45,14 +45,14 @@ export class World {
  private mist:THREE.Mesh[]=[];
  private rings:THREE.Mesh[]=[];
  constructor(_kit:Kit){
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(180,180),mat("#26372b"));ground.rotation.x=-Math.PI/2;ground.position.y=-0.04;this.root.add(ground);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(180,180),mat("#33473a"));ground.rotation.x=-Math.PI/2;ground.position.y=-0.04;this.root.add(ground);
   // dirt road and distant paddy strips
-  const road=new THREE.Mesh(new THREE.PlaneGeometry(5,90),mat("#66513b"));road.rotation.x=-Math.PI/2;road.position.set(0,0.005,-16);this.root.add(road);
+  const road=new THREE.Mesh(new THREE.PlaneGeometry(5,90),mat("#77603f"));road.rotation.x=-Math.PI/2;road.position.set(0,0.005,-16);this.root.add(road);
   for(let i=0;i<7;i++){const p=new THREE.Mesh(new THREE.PlaneGeometry(16,5),mat(i%2?"#304b35":"#3b5838"));p.rotation.x=-Math.PI/2;p.position.set((i%2?1:-1)*13,0.01,-25-Math.floor(i/2)*9);this.root.add(p);}
   // houses on either side; windows are UNLIT (basic) so the lamp can never blow them white (v1 bug)
   for(let i=0;i<8;i++){const side=i%2?1:-1,z=-22+Math.floor(i/2)*10,x=side*(6.5+(i%3)*1.1);
    const house=new THREE.Group();house.position.set(x,0,z);
-   const body=new THREE.Mesh(box(4,2.6,3.8,mat("#70533b")),mat("#70533b"));body.position.y=1.3;house.add(body);
+   const body=new THREE.Mesh(box(4,2.6,3.8,mat("#7d6046")),mat("#7d6046"));body.position.y=1.3;house.add(body);
    const roofGeo=new THREE.ConeGeometry(3.3,1.6,4);const roof=new THREE.Mesh(roofGeo,mat("#382b29"));roof.rotation.y=Math.PI/4;roof.position.y=3.35;house.add(roof);
    const door=new THREE.Mesh(box(.85,1.65,.08),mat("#30251f"));door.position.set(0,.85,1.95);house.add(door);
    for(const sx of [-1.1,1.1]){const wm=basic("#c98f3d");this.windowMats.push(wm);const win=new THREE.Mesh(box(.65,.6,.08,wm),wm);win.position.set(sx,1.7,1.96);house.add(win);}
@@ -64,8 +64,9 @@ export class World {
    const crown=new THREE.Mesh(sphere,mat("#203b2b"));crown.scale.set(1.35,1.2,1.25);crown.position.set(x,2.8,z);this.root.add(crown);
    this.crowns.push({mesh:crown,baseX:x,phase:i*1.1});
   }
-  // sky dome and stars (twinkle in update)
-  this.sky=new THREE.Mesh(new THREE.SphereGeometry(100,16,12),new THREE.MeshBasicMaterial({color:"#101d36",side:THREE.BackSide}));this.root.add(this.sky);
+  // sky dome and stars (twinkle in update) — v3: langit malam sedikit
+  // lebih terang supaya dunia kebaca (v2 terlalu gelap, latar jadi void)
+  this.sky=new THREE.Mesh(new THREE.SphereGeometry(100,16,12),new THREE.MeshBasicMaterial({color:"#1a2c47",side:THREE.BackSide}));this.root.add(this.sky);
   const pts:THREE.Vector3[]=[];for(let i=0;i<180;i++){const a=i*2.399963229728653,y=8+((i*17)%35),r=55;pts.push(new THREE.Vector3(Math.cos(a)*r,y,-Math.abs(Math.sin(a)*r)-10));}
   const sg=new THREE.BufferGeometry().setFromPoints(pts);this.stars=new THREE.Points(sg,new THREE.PointsMaterial({color:"#dce8ff",size:.18,sizeAttenuation:true,transparent:true,opacity:.85}));this.root.add(this.stars);
   const tc=document.createElement("canvas");tc.width=512;tc.height=256;const tg=tc.getContext("2d")!;tg.font="bold 116px Arial";tg.textAlign="center";tg.fillStyle="#fff4c9";tg.strokeStyle="#20170f";tg.lineWidth=16;tg.strokeText("TOK!",256,155);tg.fillText("TOK!",256,155);const tt=new THREE.CanvasTexture(tc);tt.colorSpace=THREE.SRGBColorSpace;this.hookText=new THREE.Mesh(new THREE.PlaneGeometry(1.7,.85),new THREE.MeshBasicMaterial({map:tt,transparent:true,depthWrite:false}));this.hookText.position.set(0,2.7,1.0);this.root.add(this.hookText);
@@ -94,8 +95,10 @@ export class World {
   for(let i=0;i<2;i++){const cl=new THREE.Mesh(new THREE.PlaneGeometry(34,7),new THREE.MeshBasicMaterial({color:"#16233a",transparent:true,opacity:.5,depthWrite:false}));cl.position.set(-10+i*18,20+i*4,-45-i*10);this.root.add(cl);this.clouds.push(cl);}
   for(let i=0;i<2;i++){const m=new THREE.Mesh(new THREE.PlaneGeometry(26,1.4),new THREE.MeshBasicMaterial({color:"#93a8bd",transparent:true,opacity:.05,depthWrite:false}));m.position.set(0,0.7,-6+i*8);this.root.add(m);this.mist.push(m);}
   // lights (lamp 6, not 8: v1 lamp at 8 pushed rope/striker/windows past the bloom threshold)
-  this.dayLight=new THREE.AmbientLight("#8ea0bd",.35);this.root.add(this.dayLight);
-  this.moon=new THREE.DirectionalLight("#9bb8ee",1.5);this.moon.position.set(-8,12,5);this.root.add(this.moon);
+  // v3: malam diterangkan (ambient .35->.6, bulan 1.5->2.2) supaya dunia
+  // kebaca seperti contoh jembatan — bukan void hitam
+  this.dayLight=new THREE.AmbientLight("#8ea0bd",.6);this.root.add(this.dayLight);
+  this.moon=new THREE.DirectionalLight("#9bb8ee",2.2);this.moon.position.set(-8,12,5);this.root.add(this.moon);
   this.sun=new THREE.DirectionalLight("#fff0d3",2.2);this.sun.position.set(4,12,3);this.root.add(this.sun);
   this.lamp=new THREE.PointLight("#ffbf65",6,13,2);this.lamp.position.set(0,2.8,0);this.root.add(this.lamp);
   this.flashlight=new THREE.SpotLight("#f5f5ff",0,18,Math.PI/8,.35,1.5);this.flashlight.position.set(0,1.55,1);this.root.add(this.flashlight);this.root.add(this.flashlight.target);
@@ -111,13 +114,15 @@ export class World {
   const kick=(id===1||id===4)?(local<7?(.035*(1-local/7)*(local%2?1:-1)):0):0;
   camera.position.set(this.cameraPos.x+kick,this.cameraPos.y,this.cameraPos.z);
   camera.lookAt(this.look);camera.fov=pose.fov;camera.updateProjectionMatrix();
-  const day=id===11? 1-smooth(local/288):0;
-  this.sky.material=(this.sky.material as THREE.MeshBasicMaterial);(this.sky.material as THREE.MeshBasicMaterial).color.set("#101d36").lerp(new THREE.Color("#7db4dc"),day);
+  // v3: transisi siang->malam relatif durasi shot (v2: /288 hardcoded dari
+  // durasi shot lama 288 frame; shot 11 kini 242 frame)
+  const day=id===11? 1-smooth(local/Math.max(1,s.b-s.a)):0;
+  this.sky.material=(this.sky.material as THREE.MeshBasicMaterial);(this.sky.material as THREE.MeshBasicMaterial).color.set("#1a2c47").lerp(new THREE.Color("#7db4dc"),day);
   this.stars.visible=day<.2;
-  this.moon.intensity=1.5*(1-day);this.sun.intensity=2.2*day;
+  this.moon.intensity=2.2*(1-day);this.sun.intensity=2.2*day;
   // lamp flickers gently (flicker ~+-8%), instead of a dead-constant light
   this.lamp.intensity=6*(1-day)*(1+0.05*Math.sin(f*0.31)+0.03*Math.sin(f*0.117+1.3));
-  this.dayLight.intensity=.35+day*.7;
+  this.dayLight.intensity=.6+day*.55;
   // subtle thermal expansion/contraction in the single continuous daytime-to-night shot
   const thermal=id===11?Math.sin(local/38)*.018:0;
   this.wood.scale.set(1+thermal,1-thermal,1+thermal);
@@ -126,22 +131,25 @@ export class World {
   this.crack.visible=id===7||id===10||id===11;
   this.cast.hideAll();
   this.hookText.visible=id===1&&local<22;
-  const show=(n:"Dani"|"Bolang"|"Jali"|"Nenek Sari"|"Pak Karto"|"Warga",x:number,z:number,sc=1,y=0)=>this.cast.show(n,x,z,sc,0,y);
-  if(id===3||id===4||id===14)show("Dani",-.8,.9,id===14?1.1:1);
-  if(id===5)show("Nenek Sari",-.9,1.0,1.08);
+  const show=(n:"Dani"|"Bolang"|"Jali"|"Nenek Sari"|"Pak Karto"|"Warga",x:number,z:number,sc=1,y=0,expr:Expr="smile")=>this.cast.show(n,x,z,sc,0,y,expr);
+  // v3: ekspresi wajah per adegan (bukan senyum terus) — lihat cast.ts
+  if(id===3||id===4)show("Dani",-.8,.9,1,0,"shock");
+  if(id===14)show("Dani",-.8,.9,1.1,0,"smile");
+  if(id===5)show("Nenek Sari",-.9,1.0,1.08,0,"worry");
   // shot 6: Bolang RUNS along the road (x -4.5 -> -0.5, bobbing); Jali + 2 warga join near the end
-  if(id===6){const bx=bolangXAt(f);show("Bolang",bx,1.0,1.12,Math.abs(Math.sin(local*0.5))*0.07);show("Jali",0.6,1.3,.95);show("Warga",-1.5,0.2,.85);show("Warga",-0.2,-0.3,.9);}
-  if(id===7)show("Pak Karto",2.3,1.1,1.04);
+  if(id===6){const bx=bolangXAt(f);show("Bolang",bx,1.0,1.12,Math.abs(Math.sin(local*0.5))*0.07);if(local>=85){show("Jali",0.6,1.3,.95);show("Warga",-1.5,0.2,.85);show("Warga",-0.2,-0.3,.9);}} // v3.1: Jali+warga baru muncul di wide (dulu ikut tracking = warga terpotong di tepi)
+  if(id===7)show("Pak Karto",2.3,1.1,1.04,0,"serious");
   // shot 8: warga clustered on the road (v1: spread +-3 m, outside the 9:16 frame)
-  if(id===8){const wx=[-1.8,-0.6,0.6,1.8],wz=[1.6,2.2,1.6,2.2];for(let i=0;i<4;i++)show("Warga",wx[i],wz[i],.85+i*.08);show("Dani",-.8,.4);}
+  if(id===8){const wx=[-1.8,-0.6,0.6,1.8],wz=[1.6,2.2,1.6,2.2];for(let i=0;i<4;i++)show("Warga",wx[i],wz[i],.85+i*.08);show("Dani",-.8,.4,1,0,"worry");}
   // shot 9/10: Jali berdiri DI DEPAN ujung dekat kentongan (z=0.3, kayu di
-  // z=-0.05) — dari kamera rendah yang menengadah, kepalanya menutupi celah
-  // 0,12 m ke kayu sehingga "menempel" terbaca (v2: z=0.1, celah kelihatan)
-  if(id===9||id===10)show("Jali",-.35,.3,1.05);
+  // z=-0.05, bawah kayu ~1,77 m, puncak kepala Jali ~1,81 m) — dari kamera
+  // medium-wide, kepalanya menutupi celah ke kayu sehingga "menempel"
+  // terbaca (v2: kamera ECU rendah; v3: medium-wide, sama-sama menempel)
+  if(id===9||id===10)show("Jali",-.35,.3,1.05,0,"puzzled");
   // shot 12/13: warga clustered on the road; Dani only in 13 (lowers his flashlight)
-  if(id===12||id===13){const wx=[-1.6,-0.5,0.6,1.5],wz=[1.4,2.0,1.4,2.0];for(let i=0;i<4;i++)show("Warga",wx[i],wz[i],.85+i*.08);if(id===13)show("Dani",-.8,.4);}
-  // shot 5 part B: a warga steps out of the doorway
-  if(id===5&&local>140)show("Warga",7.6,0.6,.95);
+  if((id===12&&local>=80)||id===13){const wx=[-1.6,-0.5,0.6,1.5],wz=[1.4,2.0,1.4,2.0];for(let i=0;i<4;i++)show("Warga",wx[i],wz[i],.85+i*.08);if(id===13)show("Dani",-.8,.4);} // v3.1: warga shot 12 baru muncul di wide (dulu ikut part cincin = warga terpotong di tepi)
+  // shot 5 part B: a warga steps out of the doorway (cut di local 115, v3)
+  if(id===5&&local>115)show("Warga",7.6,0.6,.95);
   // shot 14: Dani raises the phone (rises over the first 50 frames); frame follows it
   if(id===14){
    const phoneY=1.15+0.35*smooth(local/50);
@@ -151,7 +159,7 @@ export class World {
   // shot 12 part A: sound rings expand out of the hollow end
   const ringsOn=id===12&&local<100;
   for(let i=0;i<2;i++){const r=this.rings[i];r.visible=ringsOn;
-   if(ringsOn){const ph=((local+i*22)%45)/45;r.scale.setScalar(1+ph*4.5);(r.material as THREE.MeshBasicMaterial).opacity=0.65*(1-ph);}}
+   if(ringsOn){const ph=((local+i*22)%45)/45;r.scale.setScalar(1+ph*1.5);r.position.x=1.28+ph*1.0;(r.material as THREE.MeshBasicMaterial).opacity=0.65*(1-ph);}} // v3.2: cincin MERAMBAT menjauhi ujung (+x) sambil membesar+memudar (dulu menempel di ujung = kelihatan kayak target/bullseye)
   // Dani's flashlight jitters on shock, otherwise points down and fades when lowered.
   const dani=id===3||id===4||id===14;this.flashlight.intensity=dani?(id===3?42+Math.sin(local*2.7)*12:id===4?30:8):0;
   this.flashlight.position.set(-.8,1.45,1.2);this.flashlight.target.position.set(Math.sin(local*.12)*.7,.3,-3);
@@ -185,16 +193,16 @@ export class World {
    g("Bolang",-0.06,0,0,0);
   } else if(id===7){ // Pak Karto stays UPRIGHT; only a slow nod
    g("Pak Karto",0,0.03*Math.sin(local*0.04),0,0);
-  } else if(id===9){ // Jali leans his ear toward the wood, holds, then pulls back
-   const env=smooth(local/40)*(1-smooth((local-170)/20));g("Jali",-0.07*env,0,0.08*env,0);
+  } else if(id===9){ // Jali leans his ear toward the wood, holds, then pulls back (shot 9 kini 134 frame, v3)
+   const env=smooth(local/35)*(1-smooth((local-105)/20));g("Jali",-0.07*env,0,0.08*env,0);
   } else if(id===10){ // Jali puzzled: slow head tilt + small step back
    g("Jali",0.05*Math.sin(local*0.05),0,-0.05*smooth(local/60),0);
   } else if(id===12&&local>=100){ // warga relieved: gentle nods, out of phase
    this.cast.gestureEach("Warga",(m,i)=>{m.rotateX(0.04*Math.sin(local*0.07+i*1.3));});
   } else if(id===13){ // warga calm: same gentle nods
    this.cast.gestureEach("Warga",(m,i)=>{m.rotateX(0.04*Math.sin(local*0.07+i*1.3));});
-  } else if(id===14&&local>350){ // Dani's small closing nod
-   g("Dani",0,0.03*Math.sin((local-350)*0.05),0,0);
+  } else if(id===14&&local>260){ // Dani's small closing nod (shot 14 kini 335 frame, v3)
+   g("Dani",0,0.03*Math.sin((local-260)*0.05),0,0);
   }
  }
 }
