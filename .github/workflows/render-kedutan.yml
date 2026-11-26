@@ -1,0 +1,140 @@
+# Render video 14 job paralel di GitHub Actions (repo publik = gratis, $0)
+#
+# Komposisi KedutanShort: 2725 frame (0..2724), 1080x1920, 30 fps, 90,84 detik.
+# Rumus pembagian frame (14 chunk, ukuran seragam 203 frame):
+#   START = chunk * 203
+#   END   = min(START + 202, 2724)
+# Chunk 0..12 masing-masing 203 frame; chunk 13 dipotong di 2724 (86 frame).
+# Total: 13 x 203 + 86 = 2725 frame — setiap frame ter-cover TEPAT SATU KALI,
+# tanpa celah dan tanpa tumpang tindih.
+#
+# CATATAN PENTING:
+# - Runner GitHub Actions TIDAK punya GPU, jadi WAJIB --gl=swangle.
+#   --gl=angle GAGAL di Actions ("In Remotion 4.0, GitHub Actions will fail
+#   when using angle, since Actions runners don't have a GPU").
+# - Perintah render di bawah ini PERSIS yang sudah terbukti jalan di VM
+#   (KentonganShort): h264, crf 16, concurrency 1,
+#   timeout 300 detik (cold start SwiftShader butuh waktu lama).
+# - Tidak ada secret yang dipakai workflow ini.
+# - Runner ubuntu-latest TIDAK menyertakan ffmpeg/ffprobe — job stitch
+#   WAJIB apt-get install ffmpeg dulu (penyebab gagal run #1 BridgeShort:
+#   step "Gabung part" mati di "ffprobe: command not found" sebelum concat).
+
+name: Render KedutanShort (14 paralel)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  render:
+    name: Render chunk ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure headless Chrome
+        run: npx remotion browser ensure
+
+      - name: Hitung range frame chunk ini
+        id: range
+        run: |
+          # 2725 frame (0..2724) / 14 chunk, ukuran seragam 203 frame.
+          # START = chunk*203 ; END = min(START+202, 2724)
+          START=$(( ${{ matrix.chunk }} * 203 ))
+          END=$(( START + 202 ))
+          if [ "$END" -gt 2724 ]; then END=2724; fi
+          echo "start=$START" >> "$GITHUB_OUTPUT"
+          echo "end=$END" >> "$GITHUB_OUTPUT"
+          echo "Chunk ${{ matrix.chunk }}: frame $START-$END ($(( END - START + 1 )) frame)"
+
+      - name: Render part
+        env:
+          REMOTION_TMP: ${{ runner.temp }}/remotion-tmp
+          TEMP: ${{ runner.temp }}/remotion-tmp
+          TMP: ${{ runner.temp }}/remotion-tmp
+        run: |
+          mkdir -p out
+          npx remotion render src/index.ts KedutanShort "out/part-${{ matrix.chunk }}.mp4" \
+            --codec h264 --crf 16 \
+            --frames=${{ steps.range.outputs.start }}-${{ steps.range.outputs.end }} \
+            --concurrency=1 --gl=swangle --timeout=300000
+
+      - name: Upload part
+        uses: actions/upload-artifact@v4
+        with:
+          name: part-${{ matrix.chunk }}
+          path: out/part-${{ matrix.chunk }}.mp4
+          retention-days: 7
+
+  stitch:
+    name: Gabung 14 part jadi video final
+    needs: render
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Download ke-14 part
+        uses: actions/download-artifact@v4
+        with:
+          path: parts
+
+      - name: Gabung part 0..13 (stream copy, fallback re-encode)
+        run: |
+          # ffmpeg/ffprobe TIDAK preinstalled di runner ubuntu-latest;
+          # kalau install di atas gagal, gagal di sini dgn pesan jelas
+          # (bukan "RUSAK: part-N").
+          command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null \
+            || { echo "ffmpeg/ffprobe tidak ditemukan"; exit 1; }
+          # Cek semua part ada + punya stream video sebelum digabung.
+          for i in $(seq 0 13); do
+            test -f "parts/part-$i/part-$i.mp4" || { echo "HILANG: part-$i"; exit 1; }
+            ffprobe -v error -select_streams v:0 \
+              -show_entries stream=codec_name,width,height -of csv=p=0 \
+              "parts/part-$i/part-$i.mp4" || { echo "RUSAK: part-$i"; exit 1; }
+          done
+          # Daftar concat urut part-0..part-13 (path absolut supaya aman).
+          : > concat.txt
+          for i in $(seq 0 13); do
+            echo "file '$PWD/parts/part-$i/part-$i.mp4'" >> concat.txt
+          done
+          # Semua part codec-nya sama (h264, 1080x1920, 30fps) jadi stream
+          # copy cukup. Re-encode hanya kalau stream copy gagal.
+          if ! ffmpeg -y -f concat -safe 0 -i concat.txt -c copy kedutan-short-final.mp4; then
+            echo "Stream copy gagal, fallback re-encode..."
+            ffmpeg -y -f concat -safe 0 -i concat.txt \
+              -c:v libx264 -crf 16 -pix_fmt yuv420p kedutan-short-final.mp4
+          fi
+
+      - name: Verifikasi video final
+        run: |
+          ffprobe -v error \
+            -show_entries format=duration \
+            -show_entries stream=codec_name,width,height,r_frame_rate \
+            -of default=noprint_wrappers=1 kedutan-short-final.mp4
+          DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 kedutan-short-final.mp4)
+          echo "Durasi final: $DUR detik (target 90,84 detik = 2725 frame / 30 fps)"
+          awk -v d="$DUR" 'BEGIN { if (d < 90.3 || d > 91.3) { print "DURASI SALAH: " d " detik"; exit 1 } }'
+
+      - name: Upload video final
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-video
+          path: kedutan-short-final.mp4
+          retention-days: 7
