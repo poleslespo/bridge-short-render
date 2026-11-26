@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Cast, type Expr } from "./cast";
+import { Cast, type ActorName, type Expr } from "./cast";
 import { SHOTS, camAt, smooth, bolangXAt } from "./story";
 
 export type Kit = Record<string, never>;
@@ -18,6 +18,8 @@ const makePhoneTexture=()=>{
  g.fillStyle="#65717e";g.font="22px Arial";g.fillText("Warga bersiap setelah",48,360);g.fillText("kentongan dibunyikan.",48,395);
  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
 };
+// v3-fix: 4 warga latar JANGAN klon identik (cast.ts: Warga..Warga4)
+const WARGA_NAMES:ActorName[]=["Warga","Warga2","Warga3","Warga4"];
 export class World {
  root=new THREE.Group(); cast:Cast;
  private cameraPos=new THREE.Vector3();
@@ -80,10 +82,27 @@ export class World {
   this.wood=new THREE.Mesh(new THREE.CylinderGeometry(.23,.28,1.55,12),mat("#81502c"));this.wood.rotation.z=Math.PI/2;this.kentongan.add(this.wood);
   const hollow=new THREE.Mesh(new THREE.CircleGeometry(.18,16),mat("#24170f"));hollow.position.set(.79,0,0);hollow.rotation.y=Math.PI/2;this.kentongan.add(hollow);
   this.crack=new THREE.Mesh(box(.025,.34,.015),mat("#21170f"));this.crack.position.set(.1,.13,.24);this.kentongan.add(this.crack);
-  // rope: unlit dark tan (v1: standard material under the lamp bloomed white)
-  const rope=new THREE.Mesh(box(.045,.55,.045,basic("#7d6448")),basic("#7d6448"));rope.position.set(0,.93,0);this.kentongan.add(rope);
-  // striker LEANS against the front-right post (v1: floated in mid-air at 1.15,.45,.15)
-  const striker=new THREE.Mesh(box(.11,.72,.11,basic("#8a6a3f")),basic("#8a6a3f"));striker.position.set(1.95,.36,1.5);striker.rotation.z=-.35;striker.rotation.x=.08;this.root.add(striker);
+  // ropes: TWO ropes from the roof slab down to the kentongan body (v3-fix,
+  // 27 Nov 2026 — user: "talinya ga nyambung, jd ngambang"). v3 had ONE
+  // short rope (0.55 m) ending 0.37 m ABOVE the wood, so the log looked
+  // like it was floating. Each rope runs from the wood top (y=2.28) up
+  // into the roof slab (underside y=3.14, top embedded at 3.22) — connected
+  // at BOTH ends. Ropes are children of the kentongan group so they sway
+  // WITH the wood; the swing pivot is the log centre and the amplitude is
+  // tiny (0.045 rad), so the embedded tops never expose a gap.
+  const ropeMat=basic("#b08d5e"); // unlit tan, lighter than v3 so it reads at night (v1: standard material under the lamp bloomed white)
+  for(const rx of [-0.55,0.55]){
+   const rope=new THREE.Mesh(box(.06,.94,.06,ropeMat),ropeMat);rope.position.set(rx,.70,0);this.kentongan.add(rope);
+   // wrap: the rope tied around the log at each hang point (sells the knot)
+   const wrapR=rx<0?0.25:0.285; // log radius at that end: .237 (left) / .273 (right)
+   const wrap=new THREE.Mesh(new THREE.TorusGeometry(wrapR,.035,8,20),ropeMat);
+   wrap.rotation.y=Math.PI/2;wrap.position.set(rx,0,0);this.kentongan.add(wrap);
+  }
+  // striker LEANS against the front-right post (v1: floated in mid-air at
+  // 1.15,.45,.15; v3-fix: z moved 1.5->1.62 so the top actually TOUCHES the
+  // post face (post z 1.61-1.79) instead of floating 0.08 m in front of it,
+  // and lean steepened so the top clearly presses the post)
+  const striker=new THREE.Mesh(box(.11,.72,.11,basic("#8a6a3f")),basic("#8a6a3f"));striker.position.set(1.97,.36,1.62);striker.rotation.z=-.42;striker.rotation.x=.08;this.root.add(striker);
   // sound rings from the hollow end (shot 12): expanding, fading
   for(let i=0;i<2;i++){const r=new THREE.Mesh(new THREE.RingGeometry(.16,.22,24),new THREE.MeshBasicMaterial({color:"#ffd98a",transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false}));r.position.set(1.28,2.05,-.05);r.rotation.y=Math.PI/2;r.visible=false;this.root.add(r);this.rings.push(r);}
   // fireflies (night only)
@@ -131,25 +150,25 @@ export class World {
   this.crack.visible=id===7||id===10||id===11;
   this.cast.hideAll();
   this.hookText.visible=id===1&&local<22;
-  const show=(n:"Dani"|"Bolang"|"Jali"|"Nenek Sari"|"Pak Karto"|"Warga",x:number,z:number,sc=1,y=0,expr:Expr="smile")=>this.cast.show(n,x,z,sc,0,y,expr);
+  const show=(n:ActorName,x:number,z:number,sc=1,y=0,expr:Expr="smile")=>this.cast.show(n,x,z,sc,0,y,expr);
   // v3: ekspresi wajah per adegan (bukan senyum terus) — lihat cast.ts
   if(id===3||id===4)show("Dani",-.8,.9,1,0,"shock");
   if(id===14)show("Dani",-.8,.9,1.1,0,"smile");
   if(id===5)show("Nenek Sari",-.9,1.0,1.08,0,"worry");
   // shot 6: Bolang RUNS along the road (x -4.5 -> -0.5, bobbing); Jali + 2 warga join near the end
-  if(id===6){const bx=bolangXAt(f);show("Bolang",bx,1.0,1.12,Math.abs(Math.sin(local*0.5))*0.07);if(local>=85){show("Jali",0.6,1.3,.95);show("Warga",-1.5,0.2,.85);show("Warga",-0.2,-0.3,.9);}} // v3.1: Jali+warga baru muncul di wide (dulu ikut tracking = warga terpotong di tepi)
+  if(id===6){const bx=bolangXAt(f);show("Bolang",bx,1.0,1.12,Math.abs(Math.sin(local*0.5))*0.07);if(local>=85){show("Jali",0.6,1.3,.95);show("Warga2",-1.5,0.2,.85);show("Warga3",-0.2,-0.3,.9);}} // v3.1: Jali+warga baru muncul di wide (dulu ikut tracking = warga terpotong di tepi)
   if(id===7)show("Pak Karto",2.3,1.1,1.04,0,"serious");
   // shot 8: warga clustered on the road (v1: spread +-3 m, outside the 9:16 frame)
-  if(id===8){const wx=[-1.8,-0.6,0.6,1.8],wz=[1.6,2.2,1.6,2.2];for(let i=0;i<4;i++)show("Warga",wx[i],wz[i],.85+i*.08);show("Dani",-.8,.4,1,0,"worry");}
+  if(id===8){const wx=[-1.8,-0.6,0.6,1.8],wz=[1.6,2.2,1.6,2.2];for(let i=0;i<4;i++)show(WARGA_NAMES[i],wx[i],wz[i],.85+i*.08);show("Dani",-.8,.4,1,0,"worry");}
   // shot 9/10: Jali berdiri DI DEPAN ujung dekat kentongan (z=0.3, kayu di
   // z=-0.05, bawah kayu ~1,77 m, puncak kepala Jali ~1,81 m) — dari kamera
   // medium-wide, kepalanya menutupi celah ke kayu sehingga "menempel"
   // terbaca (v2: kamera ECU rendah; v3: medium-wide, sama-sama menempel)
   if(id===9||id===10)show("Jali",-.35,.3,1.05,0,"puzzled");
   // shot 12/13: warga clustered on the road; Dani only in 13 (lowers his flashlight)
-  if((id===12&&local>=80)||id===13){const wx=[-1.6,-0.5,0.6,1.5],wz=[1.4,2.0,1.4,2.0];for(let i=0;i<4;i++)show("Warga",wx[i],wz[i],.85+i*.08);if(id===13)show("Dani",-.8,.4);} // v3.1: warga shot 12 baru muncul di wide (dulu ikut part cincin = warga terpotong di tepi)
+  if((id===12&&local>=80)||id===13){const wx=[-1.6,-0.5,0.6,1.5],wz=[1.4,2.0,1.4,2.0];for(let i=0;i<4;i++)show(WARGA_NAMES[i],wx[i],wz[i],.85+i*.08);if(id===13)show("Dani",-.8,.4);} // v3.1: warga shot 12 baru muncul di wide (dulu ikut part cincin = warga terpotong di tepi)
   // shot 5 part B: a warga steps out of the doorway (cut di local 115, v3)
-  if(id===5&&local>115)show("Warga",7.6,0.6,.95);
+  if(id===5&&local>115)show("Warga4",7.6,0.6,.95);
   // shot 14: Dani raises the phone (rises over the first 50 frames); frame follows it
   if(id===14){
    const phoneY=1.15+0.35*smooth(local/50);
@@ -184,7 +203,9 @@ export class World {
   *  channel rules: transient lean max ~4 deg = 0.07 rad). Applied AFTER
   *  faceCamera, so they read in screen space. */
  private applyGestures(id:number,local:number){
-  const g=(n:"Dani"|"Bolang"|"Jali"|"Nenek Sari"|"Pak Karto"|"Warga",rz=0,rx=0,dx=0,dy=0)=>this.cast.gesture(n,rz,rx,dx,dy);
+  const g=(n:ActorName,rz=0,rx=0,dx=0,dy=0)=>this.cast.gesture(n,rz,rx,dx,dy);
+  // angguk warga beramai-ramai, fase beda per tokoh (v3-fix: 4 varian, bukan 1 nama)
+  const wargaNod=()=>{let off=0;for(const n of WARGA_NAMES){this.cast.gestureEach(n,(m,i)=>{m.rotateX(0.04*Math.sin(local*0.07+(i+off)*1.3));});off++;}};
   if(id===3){ // Dani recoils from the shock: lean back + step back, then recover
    const env=local<8?0:local<30?Math.sin(Math.PI*(local-8)/22):0;g("Dani",0.06*env,0,-0.1*env,0);
   } else if(id===5){ // Nenek nods slowly while she warns
@@ -198,9 +219,9 @@ export class World {
   } else if(id===10){ // Jali puzzled: slow head tilt + small step back
    g("Jali",0.05*Math.sin(local*0.05),0,-0.05*smooth(local/60),0);
   } else if(id===12&&local>=100){ // warga relieved: gentle nods, out of phase
-   this.cast.gestureEach("Warga",(m,i)=>{m.rotateX(0.04*Math.sin(local*0.07+i*1.3));});
+   wargaNod();
   } else if(id===13){ // warga calm: same gentle nods
-   this.cast.gestureEach("Warga",(m,i)=>{m.rotateX(0.04*Math.sin(local*0.07+i*1.3));});
+   wargaNod();
   } else if(id===14&&local>260){ // Dani's small closing nod (shot 14 kini 335 frame, v3)
    g("Dani",0,0.03*Math.sin((local-260)*0.05),0,0);
   }
