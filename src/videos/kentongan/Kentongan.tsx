@@ -64,7 +64,7 @@ const ShotView:React.FC<{id:number;kit:Kit;alpha:number}>=({id,kit,alpha})=>
 export const KentonganShort:React.FC=()=>{
  const f=useCurrentFrame();const kit=useKit();if(!kit)return null;
  const flash=f>=FLASH_AT&&f<FLASH_AT+4?[1,.75,.45,.2][f-FLASH_AT]:0;
- return <AbsoluteFill style={{background:"#101d36"}}>
+ return <AbsoluteFill style={{background:"#182842"}}>
   {layersAt(f).map((l,i)=><ShotView key={i} id={l.id} kit={kit} alpha={l.alpha}/>)}
   {flash>0&&<AbsoluteFill style={{background:"#fff",opacity:flash}}/>}
  </AbsoluteFill>;
