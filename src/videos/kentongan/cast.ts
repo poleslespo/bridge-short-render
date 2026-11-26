@@ -3,6 +3,12 @@ import { NOINK } from "../bridge/ink";
 
 export const SU = 1;
 type ActorName = "Dani"|"Bolang"|"Jali"|"Nenek Sari"|"Pak Karto"|"Warga";
+/** Ekspresi wajah (v3, 27 Nov 2026): v2 semua tokoh senyum terus — user
+ *  bilang "gambar orang ngaco". Tiap tokoh kini punya varian wajah yang
+ *  dipakai sesuai adegan (Dani kaget, Nenek khawatir, Karto serius,
+ *  Jali heran). Digambar di canvas yang sama, jadi murah. */
+export type Expr = "smile"|"shock"|"worry"|"serious"|"puzzled";
+const EXPRS:Expr[]=["smile","shock","worry","serious","puzzled"];
 type SpriteDef={name:ActorName;w:number;h:number;shirt:string;head:string;hair:string;kind:string};
 const defs:SpriteDef[]=[
  {name:"Dani",w:0.64,h:1.95,shirt:"#344d65",head:"#d79b72",hair:"#252329",kind:"slim"},
@@ -12,7 +18,7 @@ const defs:SpriteDef[]=[
  {name:"Pak Karto",w:0.76,h:1.68,shirt:"#806b4c",head:"#c28b69",hair:"#eee2cf",kind:"peci"},
  {name:"Warga",w:0.58,h:1.55,shirt:"#647b8a",head:"#c88f6c",hair:"#30251f",kind:"plain"},
 ];
-const makeSprite=(d:SpriteDef)=>{
+const makeSprite=(d:SpriteDef,expr:Expr="smile")=>{
  const c=document.createElement("canvas");c.width=256;c.height=512;
  const g=c.getContext("2d")!;g.lineWidth=8;g.lineJoin="round";g.strokeStyle="#252329";
  const path=(fn:()=>void,fill:string)=>{g.beginPath();fn();g.fillStyle=fill;g.fill();g.stroke();};
@@ -28,9 +34,28 @@ const makeSprite=(d:SpriteDef)=>{
  if(d.kind==="peci"){path(()=>{g.moveTo(75,72);g.lineTo(78,43);g.quadraticCurveTo(128,20,178,43);g.lineTo(181,75);g.closePath();},"#28242a");}
  else if(d.kind==="scarf"){path(()=>{g.moveTo(62,93);g.quadraticCurveTo(60,28,128,28);g.quadraticCurveTo(196,28,194,93);g.lineTo(173,75);g.quadraticCurveTo(128,53,82,82);g.closePath();},"#eee7db");path(()=>{g.moveTo(64,154);g.lineTo(37,240);g.lineTo(83,265);g.lineTo(111,165);g.closePath();},"#a77c91");}
  else {path(()=>{g.moveTo(79,77);g.quadraticCurveTo(78,34,128,38);g.quadraticCurveTo(181,30,181,83);g.lineTo(165,65);g.lineTo(93,67);g.closePath();},d.hair);}
- // face details; large enough to read in close-ups
- g.fillStyle="#252329";g.beginPath();g.arc(108,116,5,0,Math.PI*2);g.arc(148,116,5,0,Math.PI*2);g.fill();
- g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,145,13,0.15,Math.PI-0.15);g.stroke();
+ // face details — ekspresi per adegan (v3). Mata di (108,116)/(148,116),
+ // mulut di sekitar (128,145-152). Ukuran sengaja besar supaya kebaca
+ // dari jarak shot lebar (7-16 m).
+ if(expr==="shock"){ // mata melotot + mulut "o" terbuka (Dani kaget)
+  g.fillStyle="#fff";g.beginPath();g.arc(108,114,9,0,Math.PI*2);g.arc(148,114,9,0,Math.PI*2);g.fill();
+  g.fillStyle="#252329";g.beginPath();g.arc(108,114,4.5,0,Math.PI*2);g.arc(148,114,4.5,0,Math.PI*2);g.fill();
+  g.fillStyle="#7a2e2e";g.beginPath();g.ellipse(128,152,9,12,0,0,Math.PI*2);g.fill();
+ } else if(expr==="worry"){ // alis naik ke tengah + mulut cemberut (Nenek khawatir)
+  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(96,100);g.lineTo(116,94);g.moveTo(140,94);g.lineTo(160,100);g.stroke();
+  g.fillStyle="#252329";g.beginPath();g.arc(108,116,5,0,Math.PI*2);g.arc(148,116,5,0,Math.PI*2);g.fill();
+  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,160,10,Math.PI+0.25,Math.PI*2-0.25);g.stroke();
+ } else if(expr==="serious"){ // mata garis datar + mulut lurus (Pak Karto tegas)
+  g.strokeStyle="#252329";g.lineWidth=6;g.beginPath();g.moveTo(96,114);g.lineTo(120,114);g.moveTo(136,114);g.lineTo(160,114);g.stroke();
+  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.moveTo(112,150);g.lineTo(144,150);g.stroke();
+ } else if(expr==="puzzled"){ // satu alis naik + mulut "o" kecil (Jali heran)
+  g.strokeStyle="#252329";g.lineWidth=4;g.beginPath();g.moveTo(136,100);g.lineTo(158,94);g.stroke();
+  g.fillStyle="#252329";g.beginPath();g.arc(108,116,5,0,Math.PI*2);g.arc(148,116,5,0,Math.PI*2);g.fill();
+  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,150,6,0,Math.PI*2);g.stroke();
+ } else { // smile (default): mata titik + senyum
+  g.fillStyle="#252329";g.beginPath();g.arc(108,116,5,0,Math.PI*2);g.arc(148,116,5,0,Math.PI*2);g.fill();
+  g.strokeStyle="#754b42";g.lineWidth=4;g.beginPath();g.arc(128,145,13,0.15,Math.PI-0.15);g.stroke();
+ }
  if(d.kind==="peci"){g.strokeStyle="#eee2cf";g.lineWidth=5;g.beginPath();g.moveTo(104,158);g.quadraticCurveTo(128,180,153,158);g.stroke();}
  if(d.kind==="round"){g.fillStyle="#eee2cf";g.fillRect(70,190,116,22);}
  if(d.kind==="bucket"){g.strokeStyle="#b6a27c";g.lineWidth=9;g.beginPath();g.arc(214,335,35,Math.PI,Math.PI*2);g.stroke();g.fillStyle="#9ca6a2";g.fillRect(190,335,48,55);}
@@ -46,17 +71,23 @@ export class Cast {
  // TERAKHIR (sisanya tertimpa). v2: pool 4 mesh per nama, show() memakai
  // mesh berikutnya yang masih tersembunyi.
  sprites=new Map<ActorName,THREE.Mesh[]>();
- materials=new Map<ActorName,THREE.MeshBasicMaterial>();
+ // v3: material per (nama, ekspresi). show() memasang material yang tepat
+ // di mesh setiap kali tampil — mesh pool dipakai bersama semua ekspresi.
+ materials=new Map<string,THREE.MeshBasicMaterial>();
  private next=new Map<ActorName,number>();
  constructor(parent:THREE.Object3D){
   parent.add(this.root);
-  for(const d of defs){const {tex}=makeSprite(d);
+  for(const d of defs){
    // v2: alphaTest (bukan transparent+depthWrite:false). v1: karakter tidak
    // menulis depth -> depth buffer utama di pixel wajah = latar belakang,
    // jadi proteksi "no ink over characters" di ink.ts gagal dan garis tinta
    // tepi jalan/rumah tergambar MENEMBUS wajah tokoh. Dengan alphaTest 0.5
    // (cara bridge) karakter menulis depth dan garis latar tertutup wajah.
-   const mat=new THREE.MeshBasicMaterial({map:tex,alphaTest:0.5,side:THREE.DoubleSide});this.materials.set(d.name,mat);
+   for(const expr of EXPRS){
+    const {tex}=makeSprite(d,expr);
+    const mat=new THREE.MeshBasicMaterial({map:tex,alphaTest:0.5,side:THREE.DoubleSide});
+    this.materials.set(`${d.name}:${expr}`,mat);
+   }
    const arr:THREE.Mesh[]=[];
    for(let k=0;k<4;k++){
     const geo=new THREE.PlaneGeometry(d.w,d.h);
@@ -64,18 +95,24 @@ export class Cast {
     // setengah ke tanah (kepala Dani di ~0,5 m, bukan 1,5 m). v2: geser
     // geometri ke atas setengah tinggi, jadi kaki tepat di y=0 (cara bridge).
     geo.translate(0,d.h/2,0);
-    const mesh=new THREE.Mesh(geo,mat);mesh.visible=false;mesh.renderOrder=5;mesh.layers.set(NOINK);this.root.add(mesh);arr.push(mesh);
+    const mesh=new THREE.Mesh(geo,this.materials.get(`${d.name}:smile`)!);mesh.visible=false;mesh.renderOrder=5;mesh.layers.set(NOINK);this.root.add(mesh);arr.push(mesh);
    }
    this.sprites.set(d.name,arr);this.next.set(d.name,0);
   }
  }
- show(name:ActorName,x:number,z:number,scale=1,rotation=0,y=0){
+ show(name:ActorName,x:number,z:number,scale=1,rotation=0,y=0,expr:Expr="smile"){
   const arr=this.sprites.get(name)!;const i=this.next.get(name)!;
   const m=arr[i%arr.length];this.next.set(name,i+1);
   m.visible=true;m.position.set(x,y,z);m.scale.setScalar(scale);m.rotation.y=rotation;
+  m.material=this.materials.get(`${name}:${expr}`)!;
  }
  hideAll(){for(const arr of this.sprites.values())for(const m of arr)m.visible=false;for(const k of this.next.keys())this.next.set(k,0);}
- faceCamera(camera:THREE.Camera){for(const arr of this.sprites.values())for(const m of arr)if(m.visible){m.quaternion.copy(camera.quaternion);m.rotation.z=0;}}
+ /** Billboard YAW-ONLY (aturan ep.11 Kedutan, 27 Nov 2026): trik lama salin
+  *  quaternion kamera + rotation.z=0 PECAH jadi roll 40-90 deg (tokoh rebah/
+  *  miring) kalau kamera menatap sepanjang sumbu ±x — shot lebar v3 yang
+  *  kameranya menyusuri adegan BISA menatap ±x. Yaw-only: tokoh selalu tegak,
+  *  hanya berputar di bidang horizontal menghadap kamera. */
+ faceCamera(camera:THREE.Camera){for(const arr of this.sprites.values())for(const m of arr)if(m.visible){const dx=camera.position.x-m.position.x,dz=camera.position.z-m.position.z;m.rotation.set(0,Math.atan2(dx,dz),0);}}
  /** Gestur prosedural pada mesh pertama yang terlihat dgn nama itu (tokoh
   *  tunggal). Dipanggil SETELAH faceCamera, jadi rotasi terbaca di ruang
   *  layar: rz = condong kiri/kanan, rx = angguk. */
