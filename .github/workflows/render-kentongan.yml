@@ -1,17 +1,13 @@
-# Render video 16 job paralel di GitHub Actions (repo publik = gratis, $0)
+# Render video 13 job paralel di GitHub Actions (repo publik = gratis, $0)
 #
-# Komposisi KentonganShort: 3207 frame (0..3206), 1080x1920, 30 fps, 106,91 detik.
-# Rumus pembagian frame (16 chunk, ukuran seragam 203 frame):
+# Komposisi KentonganShort v3: 2476 frame (0..2475), 1080x1920, 30 fps, 82,53 detik.
+# (v2: 3207 frame / 16 job — narasi baru Zephyr lebih cepat, total menyusut.)
+# Rumus pembagian frame (13 chunk, ukuran seragam 203 frame):
 #   START = chunk * 203
-#   END   = min(START + 202, 3206)
-# Chunk 0..14 masing-masing 203 frame; chunk 15 dipotong di 3206 (162 frame).
-# Total: 15 x 203 + 162 = 3207 frame — setiap frame ter-cover TEPAT SATU KALI,
+#   END   = min(START + 202, 2475)
+# Chunk 0..11 masing-masing 203 frame; chunk 12 dipotong di 2475 (40 frame).
+# Total: 12 x 203 + 40 = 2476 frame — setiap frame ter-cover TEPAT SATU KALI,
 # tanpa celah dan tanpa tumpang tindih.
-#
-# KENAPA 16 CHUNK (bukan 10): rumus lama 10 x 203 = 2030 frame hanya mencakup
-# BridgeShort (2025 frame). Untuk 3207 frame, 10 chunk butuh 321 frame/chunk
-# (2,2–4 jam/job, mepet batas 300 menit). 16 x 203 memakai ukuran chunk yang
-# SUDAH terbukti di BridgeShort, tiap job ±1,4–2,5 jam — aman.
 #
 # CATATAN PENTING:
 # - Runner GitHub Actions TIDAK punya GPU, jadi WAJIB --gl=swangle.
@@ -25,7 +21,7 @@
 #   WAJIB apt-get install ffmpeg dulu (penyebab gagal run #1 BridgeShort:
 #   step "Gabung part" mati di "ffprobe: command not found" sebelum concat).
 
-name: Render KentonganShort (16 paralel)
+name: Render KentonganShort (13 paralel)
 
 on:
   workflow_dispatch:
@@ -38,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,11 +54,11 @@ jobs:
       - name: Hitung range frame chunk ini
         id: range
         run: |
-          # 3207 frame (0..3206) / 16 chunk, ukuran seragam 203 frame.
-          # START = chunk*203 ; END = min(START+202, 3206)
+          # 2476 frame (0..2475) / 13 chunk, ukuran seragam 203 frame.
+          # START = chunk*203 ; END = min(START+202, 2475)
           START=$(( ${{ matrix.chunk }} * 203 ))
           END=$(( START + 202 ))
-          if [ "$END" -gt 3206 ]; then END=3206; fi
+          if [ "$END" -gt 2475 ]; then END=2475; fi
           echo "start=$START" >> "$GITHUB_OUTPUT"
           echo "end=$END" >> "$GITHUB_OUTPUT"
           echo "Chunk ${{ matrix.chunk }}: frame $START-$END ($(( END - START + 1 )) frame)"
@@ -87,7 +83,7 @@ jobs:
           retention-days: 7
 
   stitch:
-    name: Gabung 16 part jadi video final
+    name: Gabung 13 part jadi video final
     needs: render
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -95,12 +91,12 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
 
-      - name: Download ke-16 part
+      - name: Download ke-13 part
         uses: actions/download-artifact@v4
         with:
           path: parts
 
-      - name: Gabung part 0..15 (stream copy, fallback re-encode)
+      - name: Gabung part 0..12 (stream copy, fallback re-encode)
         run: |
           # ffmpeg/ffprobe TIDAK preinstalled di runner ubuntu-latest;
           # kalau install di atas gagal, gagal di sini dgn pesan jelas
@@ -108,15 +104,15 @@ jobs:
           command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null \
             || { echo "ffmpeg/ffprobe tidak ditemukan"; exit 1; }
           # Cek semua part ada + punya stream video sebelum digabung.
-          for i in $(seq 0 15); do
+          for i in $(seq 0 12); do
             test -f "parts/part-$i/part-$i.mp4" || { echo "HILANG: part-$i"; exit 1; }
             ffprobe -v error -select_streams v:0 \
               -show_entries stream=codec_name,width,height -of csv=p=0 \
               "parts/part-$i/part-$i.mp4" || { echo "RUSAK: part-$i"; exit 1; }
           done
-          # Daftar concat urut part-0..part-15 (path absolut supaya aman).
+          # Daftar concat urut part-0..part-12 (path absolut supaya aman).
           : > concat.txt
-          for i in $(seq 0 15); do
+          for i in $(seq 0 12); do
             echo "file '$PWD/parts/part-$i/part-$i.mp4'" >> concat.txt
           done
           # Semua part codec-nya sama (h264, 1080x1920, 30fps) jadi stream
@@ -134,8 +130,8 @@ jobs:
             -show_entries stream=codec_name,width,height,r_frame_rate \
             -of default=noprint_wrappers=1 kentongan-short-final.mp4
           DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 kentongan-short-final.mp4)
-          echo "Durasi final: $DUR detik (target 106,91 detik = 3207 frame / 30 fps)"
-          awk -v d="$DUR" 'BEGIN { if (d < 106.4 || d > 107.4) { print "DURASI SALAH: " d " detik"; exit 1 } }'
+          echo "Durasi final: $DUR detik (target 82,53 detik = 2476 frame / 30 fps)"
+          awk -v d="$DUR" 'BEGIN { if (d < 82.0 || d > 83.1) { print "DURASI SALAH: " d " detik"; exit 1 } }'
 
       - name: Upload video final
         uses: actions/upload-artifact@v4
