@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { BridgeShort, BRIDGE_FRAMES } from "./videos/bridge/Bridge";
 import { Minimal } from "./Minimal";
+import { KentonganShort, KENTONGAN_FRAMES } from "./videos/kentongan/Kentongan";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -9,6 +10,14 @@ export const RemotionRoot: React.FC = () => {
         id="BridgeShort"
         component={BridgeShort}
         durationInFrames={BRIDGE_FRAMES}
+        fps={30}
+        width={1080}
+        height={1920}
+      />
+      <Composition
+        id="KentonganShort"
+        component={KentonganShort}
+        durationInFrames={KENTONGAN_FRAMES}
         fps={30}
         width={1080}
         height={1920}
