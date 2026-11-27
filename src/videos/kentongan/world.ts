@@ -20,6 +20,20 @@ const makePhoneTexture=()=>{
 };
 // v3-fix: 4 warga latar JANGAN klon identik (cast.ts: Warga..Warga4)
 const WARGA_NAMES:ActorName[]=["Warga","Warga2","Warga3","Warga4"];
+/** Jalur jalan multi-titik (v4, 27 Nov 2026 — user: "jangan diem doang,
+ *  ceritanya hidup, orang-orang dan suasananya seakan hidup dan real; ini
+ *  tadi banyak diem doang kayak gambar"). pts = [[local, x, z], ...] —
+ *  interpolasi smoothstep antar titik, bobbing langkah selama bergerak.
+ *  Dipakai supaya tokoh UTAMA tiap shot BERGERAK dan bereaksi (berjalan,
+ *  melangkah mendekat/menjauh, masuk frame), bukan berdiri diam.
+ *  Posisi AKHIR tiap jalur = posisi diam v3 (yang diperiksa check-framing). */
+const path2=(local:number,pts:[number,number,number][])=>{
+ let i=0;while(i<pts.length-2&&local>pts[i+1][0])i++;
+ const [t0,x0,z0]=pts[i],[t1,x1,z1]=pts[i+1];
+ const u=smooth((local-t0)/Math.max(1,t1-t0));
+ const moving=local>t0&&local<t1;
+ return {x:x0+(x1-x0)*u,z:z0+(z1-z0)*u,y:moving?Math.abs(Math.sin(local*0.55))*0.06:0};
+};
 export class World {
  root=new THREE.Group(); cast:Cast;
  private cameraPos=new THREE.Vector3();
@@ -152,23 +166,39 @@ export class World {
   this.hookText.visible=id===1&&local<22;
   const show=(n:ActorName,x:number,z:number,sc=1,y=0,expr:Expr="smile")=>this.cast.show(n,x,z,sc,0,y,expr);
   // v3: ekspresi wajah per adegan (bukan senyum terus) — lihat cast.ts
-  if(id===3||id===4)show("Dani",-.8,.9,1,0,"shock");
-  if(id===14)show("Dani",-.8,.9,1.1,0,"smile");
-  if(id===5)show("Nenek Sari",-.9,1.0,1.08,0,"worry");
-  // shot 6: Bolang RUNS along the road (x -4.5 -> -0.5, bobbing); Jali + 2 warga join near the end
-  if(id===6){const bx=bolangXAt(f);show("Bolang",bx,1.0,1.12,Math.abs(Math.sin(local*0.5))*0.07);if(local>=85){show("Jali",0.6,1.3,.95);show("Warga2",-1.5,0.2,.85);show("Warga3",-0.2,-0.3,.9);}} // v3.1: Jali+warga baru muncul di wide (dulu ikut tracking = warga terpotong di tepi)
-  if(id===7)show("Pak Karto",2.3,1.1,1.04,0,"serious");
-  // shot 8: warga clustered on the road (v1: spread +-3 m, outside the 9:16 frame)
-  if(id===8){const wx=[-1.8,-0.6,0.6,1.8],wz=[1.6,2.2,1.6,2.2];for(let i=0;i<4;i++)show(WARGA_NAMES[i],wx[i],wz[i],.85+i*.08);show("Dani",-.8,.4,1,0,"worry");}
-  // shot 9/10: Jali berdiri DI DEPAN ujung dekat kentongan (z=0.3, kayu di
+  // v4 (27 Nov 2026 — user: "jangan diem doang"): tiap shot tokoh UTAMA
+  // BERGERAK — berjalan, melangkah mendekat/menjauh, masuk frame — via
+  // path2(). Posisi AKHIR tiap jalur = posisi diam v3 (check-framing).
+  if(id===3){ // Dani terkejut: mundur tersentak, lalu merangkak mendekat lagi
+   const p=path2(local,[[0,-0.8,0.9],[30,-1.15,1.35],[110,-0.8,0.9],[126,-0.8,0.9]]);show("Dani",p.x,p.z,1,p.y,"shock");
+  }
+  if(id===4){ // Dani menghindar: geser menjauh, lalu menatap kentongan
+   const p=path2(local,[[0,-0.8,0.9],[55,-1.05,1.2],[112,-0.9,1.0]]);show("Dani",p.x,p.z,1,p.y,"shock");
+  }
+  if(id===14){ // Dani melangkah maju pelan sambil mengangkat HP
+   const p=path2(local,[[0,-0.8,0.9],[150,-0.5,0.7],[335,-0.5,0.7]]);show("Dani",p.x,p.z,1.1,p.y,"smile");
+  }
+  if(id===5){ // Nenek berjalan dari pintu ke jalan sambil memperingatkan
+   const p=path2(local,[[0,-2.2,1.7],[120,-0.9,1.0],[233,-0.9,1.0]]);show("Nenek Sari",p.x,p.z,1.08,p.y,"worry");
+  }
+  // shot 6: Bolang RUNS along the road (x -4.5 -> -0.5, bobbing); Jali + 2 warga MASUK frame berjalan (bukan muncul tiba-tiba)
+  if(id===6){const bx=bolangXAt(f);show("Bolang",bx,1.0,1.12,Math.abs(Math.sin(local*0.5))*0.07);if(local>=85){const j=path2(local,[[85,2.4,1.7],[124,0.6,1.3]]);show("Jali",j.x,j.z,.95,j.y);const w2=path2(local,[[85,-3.4,0.8],[124,-1.5,0.2]]);show("Warga2",w2.x,w2.z,.85,w2.y);const w3=path2(local,[[85,-2.0,-1.0],[124,-0.2,-0.3]]);show("Warga3",w3.x,w3.z,.9,w3.y);}}
+  if(id===7){ // Pak Karto berjalan berat mendekati kentongan, lalu membungkuk memeriksa retak
+   const p=path2(local,[[0,3.8,1.7],[90,2.3,1.1],[195,2.3,1.1]]);show("Pak Karto",p.x,p.z,1.04,p.y,"serious");
+  }
+  // shot 8: warga MASUK frame berjalan dari tepi jalan ke kelompok (v1: spread +-3 m, outside the 9:16 frame)
+  if(id===8){const ends:[ActorName,number,number,number,number][]=[["Warga",-1.8,1.6,-3.6,1.8],["Warga2",-0.6,2.2,-2.4,2.8],["Warga3",0.6,1.6,2.4,1.8],["Warga4",1.8,2.2,3.6,2.8]];for(let i=0;i<4;i++){const [n,ex,ez,sx,sz]=ends[i];const p=path2(local,[[0,sx,sz],[70,ex,ez],[202,ex-0.15,ez-0.25]]);show(n,p.x,p.z,.85+i*.08,p.y);}const dp=path2(local,[[0,-1.8,0.6],[70,-0.8,0.4],[202,-0.8,0.4]]);show("Dani",dp.x,dp.z,1,dp.y,"worry");}
+  // shot 9/10: Jali melangkah MENDEKAT ke kentongan (z 1.5 -> 0.3, kayu di
   // z=-0.05, bawah kayu ~1,77 m, puncak kepala Jali ~1,81 m) — dari kamera
   // medium-wide, kepalanya menutupi celah ke kayu sehingga "menempel"
   // terbaca (v2: kamera ECU rendah; v3: medium-wide, sama-sama menempel)
-  if(id===9||id===10)show("Jali",-.35,.3,1.05,0,"puzzled");
-  // shot 12/13: warga clustered on the road; Dani only in 13 (lowers his flashlight)
-  if((id===12&&local>=80)||id===13){const wx=[-1.6,-0.5,0.6,1.5],wz=[1.4,2.0,1.4,2.0];for(let i=0;i<4;i++)show(WARGA_NAMES[i],wx[i],wz[i],.85+i*.08);if(id===13)show("Dani",-.8,.4);} // v3.1: warga shot 12 baru muncul di wide (dulu ikut part cincin = warga terpotong di tepi)
-  // shot 5 part B: a warga steps out of the doorway (cut di local 115, v3)
-  if(id===5&&local>115)show("Warga4",7.6,0.6,.95);
+  if(id===9){const p=path2(local,[[0,-0.35,1.5],[55,-0.35,0.3],[134,-0.35,0.3]]);show("Jali",p.x,p.z,1.05,p.y,"puzzled");}
+  if(id===10){const p=path2(local,[[0,-0.35,0.3],[50,-0.35,1.0],[120,-0.7,1.0],[161,-0.55,0.7]]);show("Jali",p.x,p.z,1.05,p.y,"puzzled");}
+  // shot 12/13: warga MASUK frame berjalan (shot 12 dari local 80); Dani hanya di 13 (menurunkan senter)
+  if(id===12&&local>=80){const ends:[ActorName,number,number,number,number][]=[["Warga",-1.6,1.4,-3.2,1.6],["Warga2",-0.5,2.0,-2.2,2.6],["Warga3",0.6,1.4,2.2,1.6],["Warga4",1.5,2.0,3.0,2.6]];for(let i=0;i<4;i++){const [n,ex,ez,sx,sz]=ends[i];const p=path2(local,[[80,sx,sz],[144,ex,ez]]);show(n,p.x,p.z,.85+i*.08,p.y);}}
+  if(id===13){const ends:[ActorName,number,number,number,number][]=[["Warga",-1.6,1.4,-3.2,1.6],["Warga2",-0.5,2.0,-2.2,2.6],["Warga3",0.6,1.4,2.2,1.6],["Warga4",1.5,2.0,3.0,2.6]];for(let i=0;i<4;i++){const [n,ex,ez,sx,sz]=ends[i];const p=path2(local,[[0,sx,sz],[60,ex,ez],[135,ex,ez]]);show(n,p.x,p.z,.85+i*.08,p.y);}const dp=path2(local,[[0,-1.6,0.6],[60,-0.8,0.4],[135,-0.8,0.4]]);show("Dani",dp.x,dp.z,1,dp.y);}
+  // shot 5 part B: warga KELUAR dari pintu berjalan (cut di local 115, v3)
+  if(id===5&&local>115){const p=path2(local,[[115,7.6,-0.8],[165,7.6,0.6],[233,7.6,0.6]]);show("Warga4",p.x,p.z,.95,p.y);}
   // shot 14: Dani raises the phone (rises over the first 50 frames); frame follows it
   if(id===14){
    const phoneY=1.15+0.35*smooth(local/50);
@@ -201,27 +231,39 @@ export class World {
  }
  /** Minimal procedural gestures (rotate around the feet; lean caps from the
   *  channel rules: transient lean max ~4 deg = 0.07 rad). Applied AFTER
-  *  faceCamera, so they read in screen space. */
+  *  faceCamera, so they read in screen space.
+  *  v4 (27 Nov 2026 — user: "jangan diem doang"): condong/angguk BESAR
+  *  SESAAAT saat kaget/takut (sampai ~0.14 rad) — lean 4° tidak kelihatan,
+  *  itu yang dikeluhkan user ("banyak diem doang kayak gambar"). SEMUA
+  *  lean di sini memakai amplop yang KEMBALI KE 0 (tidak ada lean permanen
+  *  — aturan menara Pisa ep.9 tetap berlaku). */
  private applyGestures(id:number,local:number){
   const g=(n:ActorName,rz=0,rx=0,dx=0,dy=0)=>this.cast.gesture(n,rz,rx,dx,dy);
   // angguk warga beramai-ramai, fase beda per tokoh (v3-fix: 4 varian, bukan 1 nama)
-  const wargaNod=()=>{let off=0;for(const n of WARGA_NAMES){this.cast.gestureEach(n,(m,i)=>{m.rotateX(0.04*Math.sin(local*0.07+(i+off)*1.3));});off++;}};
-  if(id===3){ // Dani recoils from the shock: lean back + step back, then recover
-   const env=local<8?0:local<30?Math.sin(Math.PI*(local-8)/22):0;g("Dani",0.06*env,0,-0.1*env,0);
-  } else if(id===5){ // Nenek nods slowly while she warns
-   g("Nenek Sari",0,0.05*Math.sin(local*0.06),0,0);
+  const wargaNod=(amp=0.05)=>{let off=0;for(const n of WARGA_NAMES){this.cast.gestureEach(n,(m,i)=>{m.rotateX(amp*Math.sin(local*0.07+(i+off)*1.3));});off++;}};
+  // amplop naik-turun (0 -> 1 -> 0) selama local a..b — untuk condong BESAR sesaat
+  const env=(a:number,b:number)=>smooth((local-a)/10)*(1-smooth((local-b)/10));
+  if(id===3){ // Dani terkejut BESAR: condong ke belakang + menyusut, lalu pulih
+   const e=local<35?Math.sin(Math.PI*Math.max(0,local-8)/27):0;g("Dani",0.14*e,0,0,-0.05*e);
+  } else if(id===4){ // Dani flinch: menyusut ke bawah, lalu condong maju menatap kentongan
+   const fl=local<18?Math.sin(Math.PI*local/18):0;g("Dani",0.12*fl,0,0,-0.12*fl);
+   g("Dani",0,0.08*env(60,112),0,0);
+  } else if(id===5){ // Nenek: angguk BESAR + condong ke depan sambil memperingatkan
+   g("Nenek Sari",0,0.08*Math.sin(local*0.06)+0.06*env(130,200),0,0);
   } else if(id===6){ // Bolang leans into his run
    g("Bolang",-0.06,0,0,0);
-  } else if(id===7){ // Pak Karto stays UPRIGHT; only a slow nod
-   g("Pak Karto",0,0.03*Math.sin(local*0.04),0,0);
-  } else if(id===9){ // Jali leans his ear toward the wood, holds, then pulls back (shot 9 kini 134 frame, v3)
-   const env=smooth(local/35)*(1-smooth((local-105)/20));g("Jali",-0.07*env,0,0.08*env,0);
-  } else if(id===10){ // Jali puzzled: slow head tilt + small step back
-   g("Jali",0.05*Math.sin(local*0.05),0,-0.05*smooth(local/60),0);
+  } else if(id===7){ // Pak Karto membungkuk memeriksa retak (cut, local>=100) + angguk pelan
+   g("Pak Karto",0,0.09*env(100,195)+0.03*Math.sin(local*0.04),0,0);
+  } else if(id===8&&local>=70){ // warga + Dani menoleh ke kentongan: condong ke tengah + angguk
+   wargaNod(0.06);
+  } else if(id===9){ // Jali menempelkan telinga BESAR: condong ke kayu, tahan, lepas
+   const e=env(55,110);g("Jali",-0.12*e,0,0.1*e,0);
+  } else if(id===10){ // Jali heran: miring kepala + mundur (jalan sudah di update)
+   g("Jali",0.08*Math.sin(local*0.05),0,0,0);
   } else if(id===12&&local>=100){ // warga relieved: gentle nods, out of phase
-   wargaNod();
+   wargaNod(0.05);
   } else if(id===13){ // warga calm: same gentle nods
-   wargaNod();
+   wargaNod(0.05);
   } else if(id===14&&local>260){ // Dani's small closing nod (shot 14 kini 335 frame, v3)
    g("Dani",0,0.03*Math.sin((local-260)*0.05),0,0);
   }
