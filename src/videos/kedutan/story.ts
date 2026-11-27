@@ -47,12 +47,22 @@ export type CameraPose={position:V3;target:V3;fov:number};
  *    seperlunya (ECU mata = hook; HP/papan teks yang harus terbaca).
  *    Semua pose di bawah sudah dilebarkan (fov 42-52, kamera mundur) dari
  *    rencana awal; jangan kembalikan ke close-up tanpa perintah user.
+ *  - ARAH 27 Nov 01.58 (user: "jangan diem doang"): tokoh HARUS BERGERAK
+ *    dan bereaksi di tiap shot — jalan pindah titik (bobbing langkah),
+ *    condong/angguk BESAR saat kaget/takut, mendekat ke lawan bicara.
+ *    Gerakan dipetakan di world.ts (walk + applyGestures); kalau satu shot
+ *    tokohnya cuma berdiri diam tanpa gerakan yang kelihatan, itu gagal.
+ *  - PERBAIKAN 27 Nov (QC video final): ECU mata JANGAN memenuhi frame —
+ *    mata kini DI DALAM cermin (cermin + konteks ruangan kebaca); ujung
+ *    atap rumah-1 yang terpotong di tepi kanan f75 dihindari dgn kamera
+ *    cut shot 1/10 digeser ke kiri + fov 42.
  * ------------------------------------------------------------------ */
 export type Pose={cam:V3;tgt:V3;fov:number;y2?:number;cuts?:{at:number;pose:Pose}[]};
 const POSES:Record<number,Pose>={
- // 1: ECU kelopak mata berkedut (pagi) -> (cut) Jali kaget di depan cermin (LEBAR)
- 1:{cam:[0,1.6,3.4],tgt:[0,1.6,1.2],fov:34,
-    cuts:[{at:70,pose:{cam:[-2.2,1.8,10.5],tgt:[-2.2,1.3,4.9],fov:44}}]},
+ // 1: wajah berkedut DI DALAM cermin (LEBAR — wajah + cermin + halaman kebaca,
+ //    BUKAN mata memenuhi frame) -> (cut) Jali kaget mendekat ke cermin
+ 1:{cam:[-2.2,1.7,8.0],tgt:[-2.2,1.25,4.6],fov:46,
+    cuts:[{at:70,pose:{cam:[-2.7,1.8,10.0],tgt:[-2.7,1.3,4.9],fov:42}}]},
  // 2: Nenek menunjuk mata Jali, wajah serius -> (cut) warga berkumpul (LEBAR)
  2:{cam:[-0.9,1.9,6.5],tgt:[-0.9,1.1,0.8],fov:44,
     cuts:[{at:100,pose:{cam:[0,2.0,8.5],tgt:[0,1.1,0.8],fov:52}}]},
@@ -62,10 +72,12 @@ const POSES:Record<number,Pose>={
  // 4: karung panen di bak truk -> (cut) jalan panjang, Jali menatap jauh
  4:{cam:[1.5,2.6,0.5],tgt:[0.8,1.3,-5.5],fov:44,
     cuts:[{at:75,pose:{cam:[0,1.5,8],tgt:[1.5,1.0,-4],fov:52}}]},
- // 5: Jali duduk di tempat tidur, mata terbuka (malam) -> kamar + jam dinding -> ECU mata
+ // 5: Jali duduk di tempat tidur, mata terbuka (malam) -> kamar + jam dinding
+ // -> Jali duduk tegak melihat sekeliling (LEBAR, kamar utuh — BUKAN ECU
+ // mata melayang; mata ECU lama di (0,1.6,1.2) sudah dipindah ke cermin)
  5:{cam:[-5.0,1.8,12],tgt:[-12.8,0.9,12],fov:48,
     cuts:[{at:55,pose:{cam:[-6.0,2.0,12],tgt:[-14.0,1.8,12],fov:46}},
-          {at:110,pose:{cam:[0,1.6,3.4],tgt:[0,1.6,1.2],fov:34}}]},
+          {at:110,pose:{cam:[-8.5,1.9,13.0],tgt:[-13.0,1.0,12.0],fov:46}}]},
  // 6: Jali menuang kopi di meja -> (cut) layar HP menyala di gelap (LEBAR,
  // Jali ikut masuk frame PENUH di kanan — kamera lama (-9.0,1.6,14.5)
  // memotong setengah wajahnya di tepi frame. Kamera HARUS di z<=13.5
@@ -84,9 +96,9 @@ const POSES:Record<number,Pose>={
  9:{cam:[-5.0,1.8,12],tgt:[-12.8,0.9,12],fov:48,
     cuts:[{at:60,pose:{cam:[-9.0,1.6,14.0],tgt:[-12.6,0.85,13.2],fov:42}},
           {at:125,pose:{cam:[-10.5,1.0,14.8],tgt:[-12.6,0.8,13.2],fov:42}}]},
- // 10: ECU kelopak berkedut pelan -> Jali sentuh kelopak di cermin -> angguk paham (LEBAR)
- 10:{cam:[0,1.6,3.4],tgt:[0,1.6,1.2],fov:34,
-    cuts:[{at:55,pose:{cam:[-2.2,1.8,10.5],tgt:[-2.2,1.3,5.0],fov:44}},
+ // 10: wajah berkedut pelan DI DALAM cermin -> Jali sentuh kelopak di cermin -> angguk paham (LEBAR)
+ 10:{cam:[-2.2,1.7,8.0],tgt:[-2.2,1.25,4.6],fov:46,
+    cuts:[{at:55,pose:{cam:[-2.7,1.8,10.0],tgt:[-2.7,1.3,5.0],fov:42}},
           {at:115,pose:{cam:[-0.5,1.8,9.0],tgt:[-2.2,1.4,5.0],fov:44}}]},
  // 11: Jali mengembuskan napas lega -> (cut) warga mengangguk, halaman tenang (LEBAR)
  11:{cam:[0,1.9,6.5],tgt:[0,1.2,1.0],fov:44,
