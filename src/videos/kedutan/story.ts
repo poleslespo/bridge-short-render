@@ -113,8 +113,13 @@ const POSES:Record<number,Pose>={
  14:{cam:[4.0,2.0,4.0],tgt:[2.4,1.0,-3.0],fov:50,
     cuts:[{at:90,pose:{cam:[0,2.0,7.5],tgt:[-0.8,1.4,0.5],fov:48}}]},
  // 15: Jali menunjuk matanya -> (cut) pintu puskesmas + papan nama
+ // FIX 27 Nov: kamera cut lama [7.6,2.2,8.0] duduk TEPAT di bawah tutup atap
+ // rumah i=7 (alas kerucut y=2.55, z 5.67-10.33) -> pita hitam (1,1,1) ~28%
+ // atas frame yg menyusut ikut dolly; pohon (8,0) jg menutup kanan frame.
+ // Kamera baru maju ke z=5.0 (0.67 m di depan tepi atap) + fov 56 spy gedung
+ // + atap muat utuh dgn langit di atas; pohon disembunyikan shot 15 (world).
  15:{cam:[0,1.9,6.0],tgt:[0,1.3,1.0],fov:44,
-    cuts:[{at:85,pose:{cam:[7.6,2.2,8.0],tgt:[7.6,2.0,-1.0],fov:44}}]},
+    cuts:[{at:85,pose:{cam:[6.0,2.5,5.0],tgt:[8.0,1.8,-1.0],fov:56}}]},
  // 16: Jali menatap kamera -> (cut) teks pertanyaan + senyum penutup (LEBAR)
  16:{cam:[0,1.9,5.8],tgt:[0,1.5,1.0],fov:42,
     cuts:[{at:80,pose:{cam:[0,2.0,6.5],tgt:[0,1.6,1.0],fov:44}}]},
