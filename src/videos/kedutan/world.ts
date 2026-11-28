@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { Cast } from "./cast";
-import type { Expr, ActorName } from "./cast";
+import { Cast, lidAt, CHAR_IDX } from "./cast";
+import type { Expr, ActorName, Anim } from "./cast";
 import { SHOTS, camAt, truckZAt, clamp01, smooth } from "./story";
 
 export type Kit = Record<string, never>;
@@ -23,13 +23,31 @@ const makeTextTexture=(lines:string[],w=512,h=256,font="bold 64px Arial",fg="#ff
  lines.forEach((ln,i)=>{g.strokeText(ln,w/2,y0+i*lh);g.fillText(ln,w/2,y0+i*lh);});
  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
 };
-/** Jalan dari (x0,z0) ke (x1,z1) selama local t0..t1, dgn bobbing langkah.
- *  Mengembalikan {x,z,dy} — dipakai show() tiap frame, jadi tokohnya
- *  BENAR-BENAR berpindah titik (bukan diam). ARAH user 27 Nov 01.58:
- *  "jangan diem doang — ceritanya hidup". */
-const walk=(x0:number,z0:number,x1:number,z1:number,local:number,t0:number,t1:number,steps=4)=>{
+/** Jalan dari (x0,z0) ke (x1,z1) selama local t0..t1 — TANPA bobbing
+ *  vertikal (v5 living rig, 28 Nov 2026). v1-v4: dy = 0,035·|sin| bikin
+ *  tokoh MANTUL/loncat kayak pocong (kaki statis di tekstur, badan
+ *  terangkat dari tanah). Kini tokoh MELUNCUR: y=0 selalu, langkah
+ *  dibaca dari KAKI yang digambar per fase (cast.ts) — dist = jarak
+ *  tempuh sepanjang jalur, dipakai menghitung fase langkah
+ *  (phase = dist / STRIDE). Mengembalikan {x,z,dist,moving}. */
+const STRIDE=1.1; // 1 siklus jalan (2 langkah) = 1,1 m -> langkah ±0,55 m
+const walk=(x0:number,z0:number,x1:number,z1:number,local:number,t0:number,t1:number)=>{
  const u=clamp01((local-t0)/(t1-t0));const s=smooth(u);
- return {x:x0+(x1-x0)*s,z:z0+(z1-z0)*s,dy:0.035*Math.abs(Math.sin(Math.PI*steps*u))};
+ const len=Math.hypot(x1-x0,z1-z0);
+ return {x:x0+(x1-x0)*s,z:z0+(z1-z0)*s,dist:s*len,moving:local>t0&&local<t1};
+};
+/** Pembicara tiap shot = tokoh FOKUS shot itu ("yang bercerita").
+ *  Narasi Kedutan adalah narator — mulut tokoh fokus bergetar saat
+ *  baris narasinya berbunyi (shot = satu baris; batas SHOTS a/b =
+ *  batas baris timeline-ep11.json), tertutup di jeda antar baris. */
+const SPEAKER:Record<number,ActorName>={1:"Jali",2:"Nenek Sari",3:"Jali",4:"Jali",5:"Jali",6:"Jali",7:"Pak Karto",8:"Pak Karto",9:"Jali",10:"Jali",11:"Jali",12:"JaliSehat",13:"JaliSehat",14:"JaliSehat",15:"JaliSehat",16:"JaliSehat"};
+const mouthAt=(id:number,f:number,name:ActorName)=>{
+ const s=SHOTS[id-1];
+ if(name!==SPEAKER[id])return 0;
+ if(f<s.a||f>=s.b)return 0; // jeda antar baris: mulut tertutup
+ if(id===12)return 0; // Jali TIDUR di shot 12: mulut tertutup
+ const t=f/30;
+ return 0.3+0.7*Math.abs(Math.sin(2*Math.PI*4.3*t)); // getar bicara ±4,3 Hz
 };
 export class World {
  root=new THREE.Group(); cast:Cast;
@@ -45,6 +63,7 @@ export class World {
  // suasana hidup: jendela berdenyut, kunang-kunang, awan, kabut, dedaunan
  private windowMats:THREE.MeshBasicMaterial[]=[];
  private crowns:{mesh:THREE.Mesh;baseX:number;phase:number}[]=[];
+ private shot15Trees:THREE.Mesh[]=[]; // pohon dpn PUSKESMAS — disembunyikan shot 15
  private fireflies:THREE.Points;
  private ffBase:Float32Array;
  private clouds:THREE.Mesh[]=[];
@@ -74,6 +93,11 @@ export class World {
    this.root.add(house);
   }
   // papan PUSKESMAS di rumah (7.6, 0, -2) — teks di dalam adegan, bukan panel
+  // FIX 27 Nov (kotak putih): papan putih polos tanpa bingkai di dinding gelap
+  // terbaca sbg kotak putih ngambang — papan belakang hijau gelap sbg bingkai
+  // (15 cm sisi, 10 cm atas/bawah; ujung atas 2.775 msh di bawah lereng atap 2.81).
+  const signBack=new THREE.Mesh(new THREE.PlaneGeometry(2.7,.75),basic("#14532d"));
+  signBack.position.set(7.6,2.4,-0.045);this.root.add(signBack);
   const sign=new THREE.Mesh(new THREE.PlaneGeometry(2.4,.55),new THREE.MeshBasicMaterial({map:makeTextTexture(["PUSKESMAS"],512,128,"bold 72px Arial","#1e6b3a","#f6f3e9")}));
   sign.position.set(7.6,2.4,-0.02);this.root.add(sign);
   // village trees and foreground silhouettes (crowns sway in update)
@@ -81,6 +105,10 @@ export class World {
    const trunk=new THREE.Mesh(cylinder(.18,2.4),mat("#443126"));trunk.position.set(x,1.2,z);this.root.add(trunk);
    const crown=new THREE.Mesh(sphere,mat("#203b2b"));crown.scale.set(1.35,1.2,1.25);crown.position.set(x,2.8,z);this.root.add(crown);
    this.crowns.push({mesh:crown,baseX:x,phase:i*1.1});
+   if(i===11||i===13)this.shot15Trees.push(trunk,crown);
+   // FIX pohon 27 Nov: i=13 (10,0) berdiri 2 m di depan dinding PUSKESMAS,
+   // tajuknya menutup ~20% kanan frame cut shot 15; i=11 (14,-5) selip di
+   // tepi kanan. Keduanya tak terlihat di bagian A shot 15 (di luar FOV).
   }
   // sky dome and stars (twinkle in update)
   this.sky=new THREE.Mesh(new THREE.SphereGeometry(100,16,12),new THREE.MeshBasicMaterial({color:"#101d36",side:THREE.BackSide}));this.root.add(this.sky);
@@ -196,6 +224,20 @@ export class World {
   // truk: diam kecuali shot 13 bagian B (jalan ke kota)
   if(id===13&&local>=70){this.truck.position.set(.8,Math.abs(Math.sin(local*.3))*.02,truckZAt(f));}
   else this.truck.position.set(.8,0,-6);
+  // FIX kotak-di-jalan (27 Nov): muka depan bak truk (#6b4a2f) kena bayangan
+  // jadi ~#241407, jauh lbh gelap dr jalan (#66513b) — di shot 15 yg kameranya
+  // lurus menyusuri jalan, bak itu terbaca sbg bayangan kotak di jalan.
+  // Truk tak berperan di shot 15 (Jali menunjuk mata -> cut PUSKESMAS),
+  // jadi disembunyikan khusus shot 15 saja; shot 13/14 tak berubah.
+  this.truck.visible=id!==15;
+  // FIX pita hitam/pohon (27 Nov): pohon i=13 di (10,0) berdiri 2 m di depan
+  // dinding PUSKESMAS, tepat di garis pandang cut shot 15 — tajuk gelapnya
+  // menutup ~20% kanan frame (terukur: ax=21.3 deg, rH=12.3 deg, dari kamera
+  // cut baru); i=11 (14,-5) selip di tepi kanan. Kamera tak bisa menghindar
+  // dgn geser sudut (pohon tepat di garis pandang), jadi disembunyikan
+  // khusus shot 15 saja, spt truk. KOREKSI: percobaan pertama sembunyikan
+  // i=12 SALAH — i=12 ada di (-8,0), sisi kiri, tak pernah masuk frame.
+  this.shot15Trees.forEach(m=>{m.visible=id!==15;});
   // shot 12 bagian B: gelas kopi disingkirkan ke ujung meja, HP diletakkan jauh
   if(id===12&&local>=80){
    this.glasses.forEach((gl,i)=>gl.position.set(-12.95+i*.15,.79,13.35));
@@ -205,45 +247,52 @@ export class World {
    this.hp.position.set(-12.5,.74,13.35);
   }
   this.cast.hideAll();
-  const show=(n:ActorName,x:number,z:number,sc=1,y=0,expr:Expr="smile")=>this.cast.show(n,x,z,sc,0,y,expr);
-  // W = jalan pindah titik (bobbing langkah). Waktu jalan dipilih supaya
-  // tokoh SUDAH sampai di posisi akhir saat frame cek framing.
-  const W=(x0:number,z0:number,x1:number,z1:number,t0:number,t1:number,steps=4)=>walk(x0,z0,x1,z1,local,t0,t1,steps);
-  if(id===1&&local>=70){const p=W(-3.2,6.0,-2.2,5.3,72,100,4);show("Jali",p.x,p.z,1,p.dy,"shock");}
+  // Animasi per frame (v5 living rig): fase jalan dari jarak tempuh,
+  // kedip dari jadwal lidAt, mulut dari pembicara + baris narasi.
+  const animFor=(name:ActorName,w:{dist:number;moving:boolean},opts?:{sleeping?:boolean}):Anim=>{
+   const sleeping=!!opts?.sleeping;
+   return {phase:(w.dist/STRIDE)%1,blink:sleeping?1:lidAt(f/30,CHAR_IDX[name]),mouth:mouthAt(id,f,name),walking:w.moving,sleeping};
+  };
+  const S=(name:ActorName,opts?:{sleeping?:boolean}):Anim=>animFor(name,{dist:0,moving:false},opts);
+  const show=(n:ActorName,x:number,z:number,sc=1,y=0,expr:Expr="smile",anim:Anim={})=>this.cast.show(n,x,z,sc,0,y,expr,anim);
+  // W = jalan pindah titik (meluncur, tanpa bobbing). Waktu jalan dipilih
+  // supaya tokoh SUDAH sampai di posisi akhir saat frame cek framing.
+  const W=(x0:number,z0:number,x1:number,z1:number,t0:number,t1:number)=>walk(x0,z0,x1,z1,local,t0,t1);
+  if(id===1&&local>=70){const p=W(-3.2,6.0,-2.2,5.3,72,100);show("Jali",p.x,p.z,1,0,"shock",animFor("Jali",p));}
   if(id===2){
-   const n=W(-2.2,.7,-1.2,.7,0,45,4);show("Nenek Sari",n.x,n.z,1.08,n.dy,"worry");
-   const j=W(-.4,.9,-.1,1.0,20,65,3);show("Jali",j.x,j.z,1,j.dy,"worry");
-   if(local>=100){const a=W(-3.0,.2,-1.8,.2,100,145,3);show("Warga2",a.x,a.z,.85,a.dy);
-    const b=W(2.5,.3,1.2,.3,100,145,3);show("Warga3",b.x,b.z,.9,b.dy);}
+   const n=W(-2.2,.7,-1.2,.7,0,45);show("Nenek Sari",n.x,n.z,1.08,0,"worry",animFor("Nenek Sari",n));
+   const j=W(-.4,.9,-.1,1.0,20,65);show("Jali",j.x,j.z,1,0,"worry",animFor("Jali",j));
+   if(local>=100){const a=W(-3.0,.2,-1.8,.2,100,145);show("Warga2",a.x,a.z,.85,0,"smile",animFor("Warga2",a));
+    const b=W(2.5,.3,1.2,.3,100,145);show("Warga3",b.x,b.z,.9,0,"smile",animFor("Warga3",b));}
   }
-  if(id===3){const p=W(4.5,-2.0,3.0,-2.0,0,45,4);show("Jali",p.x,p.z,1,p.dy,"worry");} // di samping truk (bukan di baknya!):
+  if(id===3){const p=W(4.5,-2.0,3.0,-2.0,0,45);show("Jali",p.x,p.z,1,0,"worry",animFor("Jali",p));} // di samping truk (bukan di baknya!):
   // posisi lama (0.8,-4.3) ada DI DALAM jejak bak truk -> badan ketutup bak,
   // cuma kepala mengintip di antara karung (s03a/s14a).
-  if(id===4&&local>=75){const p=W(0,3.5,0,1.5,75,120,4);show("Jali",p.x,p.z,1,p.dy,"worry");}
-  if(id===5)show("Jali",-13.0,12,1,0,"worry"); // SEMUA cut (dulu local<110
+  if(id===4&&local>=75){const p=W(0,3.5,0,1.5,75,120);show("Jali",p.x,p.z,1,0,"worry",animFor("Jali",p));}
+  if(id===5)show("Jali",-13.0,12,1,0,"worry",S("Jali")); // SEMUA cut (dulu local<110
   // karena cut 3 itu ECU mata melayang — kini cut 3 medium shot kamar,
   // Jali WAJIB kelihatan duduk tegak di kasur; s05c gagal karena ini)
-  if(id===6)show("Jali",-12.2,12.6,1,0,"worry");
-  if(id===7){const k=W(2.2,.7,.4,.7,0,40,4);show("Pak Karto",k.x,k.z,1.04,k.dy,"serious");
-   if(local>=90){const j=W(-.2,1.0,-.5,1.0,90,125,3);show("Jali",j.x,j.z,1,j.dy,"worry");}}
-  if(id===8){const k=W(3.5,1.1,2.3,1.1,0,40,4);show("Pak Karto",k.x,k.z,1.04,k.dy,"serious");
-   show("Jali",-.8,1.0,1,0,"puzzled");}
-  if(id===9&&local<60)show("Jali",-13.0+0.4*Math.sin(local*0.06),12,1,0.02*Math.abs(Math.sin(local*0.3)),"worry"); // mondar-mandir gelisah
-  if(id===10&&local>=55){const p=W(-3.2,6.0,-2.2,5.3,57,92,4);show("Jali",p.x,p.z,1,p.dy,local<115?"puzzled":"smile");}
-  if(id===11){show("Jali",0,1.0,1,0,"smile");
-   if(local>=60){const a=W(-2.8,1.4,-1.5,1.4,60,90,3);show("Warga",a.x,a.z,.85,a.dy);
-    const b=W(2.0,1.6,.6,1.6,60,90,3);show("Warga2",b.x,b.z,.9,b.dy);
-    const c=W(3.0,1.2,1.6,1.2,60,90,3);show("Warga3",c.x,c.z,.88,c.dy);}}
+  if(id===6)show("Jali",-12.2,12.6,1,0,"worry",S("Jali"));
+  if(id===7){const k=W(2.2,.7,.4,.7,0,40);show("Pak Karto",k.x,k.z,1.04,0,"serious",animFor("Pak Karto",k));
+   if(local>=90){const j=W(-.2,1.0,-.5,1.0,90,125);show("Jali",j.x,j.z,1,0,"worry",animFor("Jali",j));}}
+  if(id===8){const k=W(3.5,1.1,2.3,1.1,0,40);show("Pak Karto",k.x,k.z,1.04,0,"serious",animFor("Pak Karto",k));
+   show("Jali",-.8,1.0,1,0,"puzzled",S("Jali"));}
+  if(id===9&&local<60)show("Jali",-13.0+0.4*Math.sin(local*0.06),12,1,0,"worry",animFor("Jali",{dist:Math.abs(0.4*Math.sin(local*0.06)),moving:true})); // mondar-mandir gelisah (y=0, tanpa bobbing)
+  if(id===10&&local>=55){const p=W(-3.2,6.0,-2.2,5.3,57,92);show("Jali",p.x,p.z,1,0,local<115?"puzzled":"smile",animFor("Jali",p));}
+  if(id===11){show("Jali",0,1.0,1,0,"smile",S("Jali"));
+   if(local>=60){const a=W(-2.8,1.4,-1.5,1.4,60,90);show("Warga",a.x,a.z,.85,0,"smile",animFor("Warga",a));
+    const b=W(2.0,1.6,.6,1.6,60,90);show("Warga2",b.x,b.z,.9,0,"smile",animFor("Warga2",b));
+    const c=W(3.0,1.2,1.6,1.2,60,90);show("Warga3",c.x,c.z,.88,0,"smile",animFor("Warga3",c));}}
   // shot 12-16: JaliSehat (TANPA cangkir kopi — kopinya dikurangi, alur pemulihan)
-  if(id===12&&local<80)show("JaliSehat",-13.6,11.2,1,0.95,"smile"); // rebah DI ATAS kasur
+  if(id===12&&local<80)show("JaliSehat",-13.6,11.2,1,0.95,"smile",S("JaliSehat",{sleeping:true})); // rebah DI ATAS kasur
   // (kaki di ujung selimut z=11.2, kepala ke arah bantal z=12.75; y=0.95
   // supaya badan tidak tenggelam ke kasur/selimut). Rebahnya via rotateZ
   // di applyGestures — BUKAN via posisi miring.
-  if(id===13&&local<70)show("JaliSehat",-13.0,12,1,0,"smile");
-  if(id===14){const p=W(4.5,-2.0,3.0,-2.0,0,45,4);show("JaliSehat",p.x,p.z,1,p.dy,"smile");
-   if(local>=90){const n=W(-2.2,.5,-1.2,.5,90,130,3);show("Nenek Sari",n.x,n.z,1.08,n.dy,"smile");}}
-  if(id===15){const p=W(0,2.2,0,1.0,0,50,4);show("JaliSehat",p.x,p.z,1,p.dy,"smile");}
-  if(id===16){const p=W(0,1.8,0,1.0,0,45,4);show("JaliSehat",p.x,p.z,1,p.dy,"smile");}
+  if(id===13&&local<70)show("JaliSehat",-13.0,12,1,0,"smile",S("JaliSehat"));
+  if(id===14){const p=W(4.5,-2.0,3.0,-2.0,0,45);show("JaliSehat",p.x,p.z,1,0,"smile",animFor("JaliSehat",p));
+   if(local>=90){const n=W(-2.2,.5,-1.2,.5,90,130);show("Nenek Sari",n.x,n.z,1.08,0,"smile",animFor("Nenek Sari",n));}}
+  if(id===15){const p=W(0,2.2,0,1.0,0,50);show("JaliSehat",p.x,p.z,1,0,"smile",animFor("JaliSehat",p));}
+  if(id===16){const p=W(0,1.8,0,1.0,0,45);show("JaliSehat",p.x,p.z,1,0,"smile",animFor("JaliSehat",p));}
   // ambient life: twinkling stars, drifting clouds + mist, swaying crowns, breathing windows, fireflies
   (this.stars.material as THREE.PointsMaterial).opacity=0.7+0.3*Math.sin(f*0.03);
   for(let i=0;i<this.clouds.length;i++){const cl=this.clouds[i];cl.position.x=-15+((((f*0.006+i*17)%30)+30)%30);}
